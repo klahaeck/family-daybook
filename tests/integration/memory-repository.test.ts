@@ -226,6 +226,91 @@ describe("memory repository integration", () => {
     expect((await repository.getTimeline(reviewerContext)).attachments).toHaveLength(1);
   });
 
+  it("includes special days in the timeline after applying finalized-day reviewer visibility", async () => {
+    const repository = new MemoryParentingRepository();
+    const owner = await repository.resolveContext(identity);
+    const settings = await repository.getSettings(owner);
+    const dates = ["2026-08-03", "2026-08-04"];
+    const assignments = [
+      {
+        childId: settings.children[0].id,
+        caregiverIds: [settings.caregivers[0].id],
+      },
+    ];
+    const created = await repository.createSpecialArrangement(owner, {
+      title: "Family visit",
+      note: "The regular routine was adjusted for the visit.",
+      startDate: dates[0],
+      endDate: dates[1],
+      assignments,
+      days: dates.map((localDate) => ({
+        localDate,
+        tasks: createArrangementTasksForDate(
+          localDate,
+          settings.template,
+          settings.children,
+        ),
+      })),
+    });
+
+    const ownerTimeline = await repository.getTimeline(owner);
+    const timelineDays = ownerTimeline.items.filter((item) =>
+      created.some((day) => day.id === item.id),
+    );
+    expect(timelineDays).toHaveLength(2);
+    expect(timelineDays[0]).toMatchObject({
+      kind: "special_day",
+      title: "Family visit",
+      description: "The regular routine was adjusted for the visit.",
+      status: "active",
+      childIds: [settings.children[0].id],
+      caregiverIds: [settings.caregivers[0].id],
+    });
+    expect(
+      timelineDays.map((item) =>
+        localDateInTimezone(
+          new Date(item.occurredAt),
+          owner.workspace.timezone,
+        ),
+      ),
+    ).toEqual([...dates].reverse());
+    expect(
+      ownerTimeline.revisions.filter((revision) =>
+        created.some((day) => day.id === revision.recordId),
+      ),
+    ).toHaveLength(2);
+
+    const reviewer = await repository.inviteReviewer(owner, {
+      email: "special-days-review@example.com",
+      displayName: "Special Days Reviewer",
+    });
+    reviewer.status = "active";
+    reviewer.authUserId = "special_days_reviewer";
+    const reviewerContext = await repository.resolveContext({
+      ...identity,
+      authUserId: reviewer.authUserId,
+      email: reviewer.email,
+    });
+    expect(
+      (await repository.getTimeline(reviewerContext)).items.some((item) =>
+        created.some((day) => day.id === item.id),
+      ),
+    ).toBe(false);
+
+    await repository.finalizeDailyLog(owner, dates[0]);
+    const reviewerTimeline = await repository.getTimeline(reviewerContext);
+    expect(
+      reviewerTimeline.items.filter((item) =>
+        created.some((day) => day.id === item.id),
+      ).map((item) => item.id),
+    ).toEqual([created[0].id]);
+    expect(
+      reviewerTimeline.revisions.filter((revision) =>
+        created.some((day) => day.id === revision.recordId),
+      ).map((revision) => revision.recordId),
+    ).toEqual([created[0].id]);
+  });
+
   it("starts with one child and persists a dynamic child list with birthdates", async () => {
     const repository = new MemoryParentingRepository();
     const context = await repository.resolveContext(identity);

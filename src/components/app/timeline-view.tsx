@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { CalendarDays, Clock3, Download, Filter, HeartHandshake, ShieldAlert } from "lucide-react";
+import { CalendarDays, CalendarRange, Clock3, Download, Filter, HeartHandshake, ShieldAlert } from "lucide-react";
 
 import { CorrectionDialog } from "@/components/forms/correction-dialog";
 import { PurgeDialog } from "@/components/forms/purge-dialog";
@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { formatDateTime, localDateInTimezone } from "@/lib/domain/dates";
+import { formatDateTime, formatDay, localDateInTimezone } from "@/lib/domain/dates";
 import { fetchTimeline } from "@/lib/fetchers";
 import type { RecordType, TimelineData } from "@/lib/domain/types";
 
@@ -19,7 +19,16 @@ const kindInfo = {
   care: { label: "Care", icon: HeartHandshake, className: "bg-emerald-50 text-emerald-800" },
   appointment: { label: "Appointment", icon: CalendarDays, className: "bg-blue-50 text-blue-800" },
   incident: { label: "Incident", icon: ShieldAlert, className: "bg-amber-50 text-amber-900" },
+  special_day: { label: "Special day", icon: CalendarRange, className: "bg-violet-50 text-violet-900" },
 };
+
+const kindFilters = [
+  { value: "all", label: "All" },
+  { value: "care", label: "Care" },
+  { value: "appointment", label: "Appointments" },
+  { value: "incident", label: "Incidents" },
+  { value: "special_day", label: "Special days" },
+];
 
 export function TimelineView({ initialData, canPurge = false }: { initialData: TimelineData; canPurge?: boolean }) {
   const { data } = useQuery({ queryKey: ["timeline"], queryFn: fetchTimeline, initialData });
@@ -49,7 +58,7 @@ export function TimelineView({ initialData, canPurge = false }: { initialData: T
         <CardContent className="grid gap-3 p-4 lg:grid-cols-[minmax(12rem,1fr)_auto_auto_auto]">
           <div className="relative"><Filter className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search factual notes" className="pl-9" aria-label="Search timeline" /></div>
           <div className="flex flex-wrap gap-2">
-            {["all", "care", "appointment", "incident"].map((value) => <Button key={value} size="sm" variant={kind === value ? "default" : "outline"} onClick={() => setKind(value)} className="capitalize">{value}</Button>)}
+            {kindFilters.map((filter) => <Button key={filter.value} size="sm" variant={kind === filter.value ? "default" : "outline"} onClick={() => setKind(filter.value)}>{filter.label}</Button>)}
           </div>
           <select className="h-8 rounded-lg border bg-background px-3 text-sm" value={childId} onChange={(event) => setChildId(event.target.value)} aria-label="Filter by child">
             <option value="all">All children</option>
@@ -82,15 +91,21 @@ export function TimelineView({ initialData, canPurge = false }: { initialData: T
                     <div>
                       <div className="flex flex-wrap items-center gap-2"><Badge variant="outline">{info.label}</Badge><Badge variant="secondary" className="capitalize">{item.status.replaceAll("_", " ")}</Badge>{item.lateEntry && <Badge variant="destructive">Late entry</Badge>}</div>
                       <h2 className="mt-3 font-semibold">{item.title}</h2>
-                      <p className="mt-1 text-xs text-muted-foreground">{childNames} · Occurred {formatDateTime(item.occurredAt, data.workspace.timezone)}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {childNames}
+                        {childNames && " · "}
+                        {item.kind === "special_day" && item.localDate
+                          ? `Planned for ${formatDay(item.localDate)}`
+                          : `Occurred ${formatDateTime(item.occurredAt, data.workspace.timezone)}`}
+                      </p>
                       {item.description && <p className="mt-3 max-w-3xl whitespace-pre-wrap text-sm leading-6 text-foreground/85">{item.description}</p>}
                       {attachments.length > 0 && <div className="mt-3 flex flex-wrap gap-2">{attachments.map((attachment) => <a key={attachment.id} href={`/api/attachments/${attachment.id}`} className={buttonVariants({ variant: "outline", size: "sm" })}><Download className="size-3.5" />{attachment.originalName}</a>)}</div>}
                       <p className="mt-3 flex items-center gap-1.5 text-xs text-muted-foreground"><Clock3 className="size-3" />Entered {formatDateTime(item.recordedAt, data.workspace.timezone)}</p>
                     </div>
                     <div className="flex items-center gap-1">
                       <RevisionHistoryDialog revisions={revisions} timezone={data.workspace.timezone} />
-                      {item.description && <CorrectionDialog recordType={(item.kind === "care" ? "care_entry" : item.kind) as RecordType} recordId={item.id} currentText={item.description} mode={item.kind === "care" && item.dailyLogStatus === "open" ? "edit" : "correct"} />}
-                      {canPurge && <PurgeDialog recordType={(item.kind === "care" ? "care_entry" : item.kind) as RecordType} recordId={item.id} />}
+                      {item.kind !== "special_day" && item.description && <CorrectionDialog recordType={(item.kind === "care" ? "care_entry" : item.kind) as RecordType} recordId={item.id} currentText={item.description} mode={item.kind === "care" && item.dailyLogStatus === "open" ? "edit" : "correct"} />}
+                      {canPurge && item.kind !== "special_day" && <PurgeDialog recordType={(item.kind === "care" ? "care_entry" : item.kind) as RecordType} recordId={item.id} />}
                     </div>
                   </div>
                 </CardContent>

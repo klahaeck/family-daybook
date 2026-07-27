@@ -321,12 +321,15 @@ export class MongoParentingRepository implements ParentingRepository {
   }
 
   async getTimeline(context: RequestContext) {
-    const [children, caregivers, allEntries, appointments, incidents, attachments, revisions, dailyLogs] = await Promise.all([
+    const [children, caregivers, allEntries, appointments, incidents, allArrangements, attachments, revisions, dailyLogs] = await Promise.all([
       (await col<Child>("children")).find({ workspaceId: context.workspace.id }).toArray(),
       (await col<Caregiver>("caregivers")).find({ workspaceId: context.workspace.id }).toArray(),
       (await col<CareEntry>("careEntries")).find({ workspaceId: context.workspace.id }).toArray(),
       (await col<Appointment>("appointments")).find({ workspaceId: context.workspace.id }).toArray(),
       (await col<Incident>("incidents")).find({ workspaceId: context.workspace.id }).toArray(),
+      (await col<SpecialArrangementDay>("specialArrangementDays"))
+        .find({ workspaceId: context.workspace.id })
+        .toArray(),
       (await col<Attachment>("attachments")).find({ workspaceId: context.workspace.id }).toArray(),
       (await col<RecordRevision>("recordRevisions")).find({ workspaceId: context.workspace.id }).toArray(),
       (await col<DailyLog>("dailyLogs"))
@@ -337,10 +340,21 @@ export class MongoParentingRepository implements ParentingRepository {
       context.member.role === "reviewer"
         ? allEntries.filter((entry) => dailyLogs.some((log) => log.id === entry.dailyLogId && log.status === "finalized"))
         : allEntries;
+    const arrangements =
+      context.member.role === "reviewer"
+        ? allArrangements.filter((arrangement) =>
+            dailyLogs.some(
+              (log) =>
+                log.id === arrangement.dailyLogId &&
+                log.status === "finalized",
+            ),
+          )
+        : allArrangements;
     const visibleRecordIds = new Set([
       ...entries.map((entry) => entry.id),
       ...appointments.map((appointment) => appointment.id),
       ...incidents.map((incident) => incident.id),
+      ...arrangements.map((arrangement) => arrangement.id),
     ]);
     return toPlainData({
       workspace: context.workspace,
@@ -350,6 +364,7 @@ export class MongoParentingRepository implements ParentingRepository {
         entries,
         appointments,
         incidents,
+        arrangements,
         dailyLogs,
         timezone: context.workspace.timezone,
       }),

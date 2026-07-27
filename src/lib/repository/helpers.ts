@@ -9,7 +9,7 @@ import type {
   TimelineItem,
 } from "@/lib/domain/types";
 import type { WorkspaceSettingsInput } from "@/lib/domain/schemas";
-import { lateEntryFor } from "@/lib/domain/dates";
+import { lateEntryFor, localDateTimeToUtc } from "@/lib/domain/dates";
 import { id } from "@/lib/domain/integrity";
 
 export function requireOwner(role: string): void {
@@ -57,6 +57,7 @@ export function toTimelineItems(input: {
   entries: CareEntry[];
   appointments: Appointment[];
   incidents: Incident[];
+  arrangements: SpecialArrangementDay[];
   dailyLogs: DailyLog[];
   timezone: string;
 }): TimelineItem[] {
@@ -111,6 +112,35 @@ export function toTimelineItems(input: {
         caregiverIds: [],
         status: incident.category,
         currentRevisionId: incident.currentRevisionId,
+      }),
+    ),
+    ...input.arrangements.map(
+      (arrangement): TimelineItem => ({
+        id: arrangement.id,
+        kind: "special_day",
+        occurredAt: localDateTimeToUtc(
+          `${arrangement.localDate}T12:00`,
+          input.timezone,
+        ),
+        recordedAt: arrangement.createdAt,
+        localDate: arrangement.localDate,
+        title: arrangement.title,
+        description: arrangement.note,
+        childIds: arrangement.assignments.map(
+          (assignment) => assignment.childId,
+        ),
+        caregiverIds: [
+          ...new Set(
+            arrangement.assignments.flatMap(
+              (assignment) => assignment.caregiverIds,
+            ),
+          ),
+        ],
+        status: arrangement.status,
+        dailyLogStatus: input.dailyLogs.find(
+          (log) => log.id === arrangement.dailyLogId,
+        )?.status,
+        currentRevisionId: arrangement.currentRevisionId,
       }),
     ),
   ].sort(

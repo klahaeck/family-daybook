@@ -227,6 +227,13 @@ test("owner can plan a past-to-present range and use a special-task caregiver de
   await dialog.getByRole("button", { name: "Save arrangement" }).click();
 
   await expect(page.getByRole("heading", { name: title })).toHaveCount(2);
+  await page.goto("/app/timeline");
+  await page.getByLabel("Search timeline").fill(title);
+  await expect(
+    page.locator('[data-slot="card"]').filter({ hasText: title }),
+  ).toHaveCount(2);
+  await page.getByRole("button", { name: "Special days" }).click();
+  await expect(page.getByText("Special day", { exact: true })).toHaveCount(2);
   await page.goto("/app");
   await expect(page.getByText(title, { exact: true })).toBeVisible();
   await expect(

@@ -327,9 +327,10 @@ export interface DashboardData {
 
 export interface TimelineItem {
   id: string;
-  kind: "care" | "appointment" | "incident";
+  kind: "care" | "appointment" | "incident" | "special_day";
   occurredAt: string;
   recordedAt: string;
+  localDate?: string;
   title: string;
   description?: string;
   childIds: string[];

@@ -287,10 +287,21 @@ export class MemoryParentingRepository implements ParentingRepository {
             ),
           )
         : data.careEntries;
+    const visibleArrangements =
+      context.member.role === "reviewer"
+        ? data.specialArrangements.filter((arrangement) =>
+            data.dailyLogs.some(
+              (log) =>
+                log.id === arrangement.dailyLogId &&
+                log.status === "finalized",
+            ),
+          )
+        : data.specialArrangements;
     const visibleRecordIds = new Set([
       ...visibleEntries.map((entry) => entry.id),
       ...data.appointments.map((appointment) => appointment.id),
       ...data.incidents.map((incident) => incident.id),
+      ...visibleArrangements.map((arrangement) => arrangement.id),
     ]);
     return {
       workspace: context.workspace,
@@ -300,6 +311,7 @@ export class MemoryParentingRepository implements ParentingRepository {
         entries: visibleEntries,
         appointments: data.appointments,
         incidents: data.incidents,
+        arrangements: visibleArrangements,
         dailyLogs: data.dailyLogs,
         timezone: context.workspace.timezone,
       }),

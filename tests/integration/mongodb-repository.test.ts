@@ -127,6 +127,11 @@ describe.skipIf(!configured)("MongoDB repository integration", () => {
       (await repository.getDashboard(context, localDates[0]))
         .specialArrangement?.id,
     ).toBe(created.id);
+    expect(
+      (await repository.getTimeline(context)).items
+        .filter((item) => createdDays.some((day) => day.id === item.id))
+        .map((item) => item.kind),
+    ).toEqual(["special_day", "special_day"]);
 
     const otherContext = await repository.resolveContext({
       authUserId: "mongo-arrangement-other-owner",
