@@ -419,7 +419,6 @@ function NewArrangementDialog({ data }: { data: SpecialArrangementsData }) {
                 <Input
                   id="arrangement-start"
                   type="date"
-                  min={today}
                   value={startDate}
                   onChange={(event) => updateRange(event.target.value, endDate)}
                   required

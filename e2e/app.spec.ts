@@ -199,7 +199,7 @@ test("shows saved routine changes on Today", async ({ page }, testInfo) => {
   await expect(page.getByText("Settings saved.", { exact: true })).toBeVisible();
 });
 
-test("owner can plan a range and use a special-task caregiver default", async ({ page }, testInfo) => {
+test("owner can plan a past-to-present range and use a special-task caregiver default", async ({ page }, testInfo) => {
   test.skip(
     testInfo.project.name !== "chromium",
     "Run the stateful special-arrangement flow once on desktop Chromium.",
@@ -215,12 +215,13 @@ test("owner can plan a range and use a special-task caregiver default", async ({
   await page.getByRole("button", { name: "New arrangement" }).click();
   const dialog = page.getByRole("dialog");
   await dialog.getByLabel("Arrangement name").fill(title);
-  const startDate = await dialog.getByLabel("Starts").inputValue();
-  const [year, month, day] = startDate.split("-").map(Number);
-  const nextDate = new Date(Date.UTC(year, month - 1, day + 1))
+  const today = await dialog.getByLabel("Starts").inputValue();
+  const [year, month, day] = today.split("-").map(Number);
+  const previousDate = new Date(Date.UTC(year, month - 1, day - 1))
     .toISOString()
     .slice(0, 10);
-  await dialog.getByLabel("Through").fill(nextDate);
+  await dialog.getByLabel("Starts").fill(previousDate);
+  await expect(dialog.getByLabel("Through")).toHaveValue(today);
   await dialog.getByText("Parent B", { exact: true }).click();
   await dialog.getByLabel("Task").first().fill(plannedTask);
   await dialog.getByRole("button", { name: "Save arrangement" }).click();

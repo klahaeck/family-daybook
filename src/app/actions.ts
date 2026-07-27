@@ -270,13 +270,6 @@ export async function createSpecialArrangementAction(
   try {
     const repository = await getRepository();
     const context = await getRequestContext();
-    const today = localDateInTimezone(new Date(), context.workspace.timezone);
-    if (parsed.data.startDate < today) {
-      return {
-        ok: false,
-        error: "New special arrangements must begin today or later.",
-      };
-    }
     const days = await repository.createSpecialArrangement(context, parsed.data);
     refreshRecords();
     return {
