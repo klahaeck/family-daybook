@@ -13,7 +13,7 @@ export default async function TimelinePage() {
       <PageHeading
         eyebrow="Review"
         title="Family timeline"
-        description="Review records chronologically or compare recorded caregiving time with configurable charts."
+        description="Review records chronologically or compare caregiving records with configurable charts."
       />
       <TimelineView
         initialData={data}

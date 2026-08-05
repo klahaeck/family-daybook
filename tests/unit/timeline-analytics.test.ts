@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { TimelineData, TimelineItem } from "@/lib/domain/types";
 import {
   getCareRecordItems,
-  summarizeCareTime,
+  summarizeCareRecords,
 } from "@/lib/timeline-analytics";
 
 const workspace: TimelineData["workspace"] = {
@@ -30,7 +30,6 @@ function careItem(
     childIds: ["child-a"],
     caregiverIds: ["caregiver-a"],
     status: "completed",
-    durationMinutes: 30,
     currentRevisionId: `revision-${id}`,
     ...input,
   };
@@ -84,18 +83,15 @@ const data: TimelineData = {
     careItem("story", {
       title: "Bedtime story",
       caregiverIds: ["caregiver-b"],
-      durationMinutes: 45,
     }),
-    careItem("untimed", {
+    careItem("partial", {
       title: "Bedtime story",
       caregiverIds: ["caregiver-b"],
-      durationMinutes: undefined,
       status: "partial",
     }),
     careItem("missed", {
       title: "School pickup",
       status: "missed",
-      durationMinutes: 20,
     }),
   ],
   attachments: [],
@@ -111,7 +107,7 @@ describe("timeline care-time analytics", () => {
   });
 
   it("counts a shared-child record once and attributes it to each caregiver", () => {
-    const summary = summarizeCareTime(data, {
+    const summary = summarizeCareRecords(data, {
       recordItems: ["Breakfast", "Bedtime story"],
       childIds: ["child-a", "child-b"],
       caregiverIds: ["caregiver-a", "caregiver-b"],
@@ -119,21 +115,26 @@ describe("timeline care-time analytics", () => {
       to: "2026-08-04",
     });
 
-    expect(summary.recordedMinutes).toBe(75);
-    expect(summary.timedRecords).toBe(2);
-    expect(summary.untimedRecords).toBe(1);
-    expect(summary.caregivers.map((caregiver) => caregiver.totalMinutes)).toEqual([
-      30,
-      75,
+    expect(summary.recordCount).toBe(3);
+    expect(summary.representedCaregiverCount).toBe(2);
+    expect(summary.representedRecordItemCount).toBe(2);
+    expect(summary.caregivers.map((caregiver) => caregiver.totalRecords)).toEqual([
+      1,
+      3,
     ]);
     expect(summary.recordItems).toEqual([
-      { label: "Bedtime story", minutes: 45 },
-      { label: "Breakfast", minutes: 30 },
+      { label: "Bedtime story", count: 2 },
+      { label: "Breakfast", count: 1 },
+    ]);
+    expect(summary.records.map((record) => record.id)).toEqual([
+      "breakfast",
+      "story",
+      "partial",
     ]);
   });
 
   it("applies record-item, child, caregiver, and workspace-date filters", () => {
-    const summary = summarizeCareTime(data, {
+    const summary = summarizeCareRecords(data, {
       recordItems: ["Bedtime story"],
       childIds: ["child-a"],
       caregiverIds: ["caregiver-a"],
@@ -141,8 +142,8 @@ describe("timeline care-time analytics", () => {
       to: "2026-08-04",
     });
 
-    expect(summary.recordedMinutes).toBe(0);
-    expect(summary.timedRecords).toBe(0);
-    expect(summary.untimedRecords).toBe(0);
+    expect(summary.recordCount).toBe(0);
+    expect(summary.representedCaregiverCount).toBe(0);
+    expect(summary.representedRecordItemCount).toBe(0);
   });
 });

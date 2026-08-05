@@ -336,7 +336,6 @@ export interface TimelineItem {
   childIds: string[];
   caregiverIds: string[];
   status: string;
-  durationMinutes?: number;
   lateEntry?: boolean;
   dailyLogStatus?: DailyLog["status"];
   currentRevisionId: string;

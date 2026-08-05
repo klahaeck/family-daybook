@@ -1,9 +1,9 @@
 import { localDateInTimezone } from "@/lib/domain/dates";
 import type { TimelineData, TimelineItem } from "@/lib/domain/types";
 
-const timeBearingStatuses = new Set(["completed", "partial"]);
+const includedCareStatuses = new Set(["completed", "partial"]);
 
-export interface CareTimeFilters {
+export interface CareRecordFilters {
   recordItems: string[];
   childIds: string[];
   caregiverIds: string[];
@@ -11,17 +11,18 @@ export interface CareTimeFilters {
   to: string;
 }
 
-export interface CareTimeSummary {
-  recordedMinutes: number;
-  timedRecords: number;
-  untimedRecords: number;
+export interface CareRecordSummary {
+  recordCount: number;
+  representedCaregiverCount: number;
+  representedRecordItemCount: number;
   caregivers: Array<{
     id: string;
     label: string;
-    totalMinutes: number;
-    recordItems: Array<{ label: string; minutes: number }>;
+    totalRecords: number;
+    recordItems: Array<{ label: string; count: number }>;
   }>;
-  recordItems: Array<{ label: string; minutes: number }>;
+  recordItems: Array<{ label: string; count: number }>;
+  records: TimelineItem[];
 }
 
 function overlaps(values: string[], selected: Set<string>): boolean {
@@ -34,17 +35,17 @@ export function getCareRecordItems(items: TimelineItem[]): string[] {
       items
         .filter(
           (item) =>
-            item.kind === "care" && timeBearingStatuses.has(item.status),
+            item.kind === "care" && includedCareStatuses.has(item.status),
         )
         .map((item) => item.title),
     ),
   ].sort((a, b) => a.localeCompare(b));
 }
 
-export function summarizeCareTime(
+export function summarizeCareRecords(
   data: TimelineData,
-  filters: CareTimeFilters,
-): CareTimeSummary {
+  filters: CareRecordFilters,
+): CareRecordSummary {
   const selectedRecordItems = new Set(filters.recordItems);
   const selectedChildren = new Set(filters.childIds);
   const selectedCaregivers = new Set(filters.caregiverIds);
@@ -52,7 +53,7 @@ export function summarizeCareTime(
   const records = data.items.filter((item) => {
     if (
       item.kind !== "care" ||
-      !timeBearingStatuses.has(item.status) ||
+      !includedCareStatuses.has(item.status) ||
       !selectedRecordItems.has(item.title) ||
       !overlaps(item.childIds, selectedChildren) ||
       !overlaps(item.caregiverIds, selectedCaregivers)
@@ -66,49 +67,40 @@ export function summarizeCareTime(
     return (!filters.from || localDate >= filters.from) &&
       (!filters.to || localDate <= filters.to);
   });
-  const timedRecords = records.filter(
-    (item) =>
-      typeof item.durationMinutes === "number" && item.durationMinutes > 0,
-  );
-
   const recordItems = filters.recordItems
     .map((label) => ({
       label,
-      minutes: timedRecords
-        .filter((item) => item.title === label)
-        .reduce((total, item) => total + (item.durationMinutes ?? 0), 0),
+      count: records.filter((item) => item.title === label).length,
     }))
-    .sort((a, b) => b.minutes - a.minutes || a.label.localeCompare(b.label));
+    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+
+  const caregivers = data.caregivers
+    .filter((caregiver) => selectedCaregivers.has(caregiver.id))
+    .map((caregiver) => {
+      const caregiverRecords = records.filter((item) =>
+        item.caregiverIds.includes(caregiver.id),
+      );
+      const caregiverRecordItems = filters.recordItems.map((label) => ({
+        label,
+        count: caregiverRecords.filter((item) => item.title === label).length,
+      }));
+      return {
+        id: caregiver.id,
+        label: caregiver.displayName,
+        totalRecords: caregiverRecords.length,
+        recordItems: caregiverRecordItems,
+      };
+    });
 
   return {
-    recordedMinutes: timedRecords.reduce(
-      (total, item) => total + (item.durationMinutes ?? 0),
-      0,
-    ),
-    timedRecords: timedRecords.length,
-    untimedRecords: records.length - timedRecords.length,
-    caregivers: data.caregivers
-      .filter((caregiver) => selectedCaregivers.has(caregiver.id))
-      .map((caregiver) => {
-        const caregiverRecords = timedRecords.filter((item) =>
-          item.caregiverIds.includes(caregiver.id),
-        );
-        const caregiverRecordItems = filters.recordItems.map((label) => ({
-          label,
-          minutes: caregiverRecords
-            .filter((item) => item.title === label)
-            .reduce((total, item) => total + (item.durationMinutes ?? 0), 0),
-        }));
-        return {
-          id: caregiver.id,
-          label: caregiver.displayName,
-          totalMinutes: caregiverRecordItems.reduce(
-            (total, item) => total + item.minutes,
-            0,
-          ),
-          recordItems: caregiverRecordItems,
-        };
-      }),
+    recordCount: records.length,
+    representedCaregiverCount: caregivers.filter(
+      (caregiver) => caregiver.totalRecords > 0,
+    ).length,
+    representedRecordItemCount: recordItems.filter((item) => item.count > 0)
+      .length,
+    caregivers,
     recordItems,
+    records,
   };
 }

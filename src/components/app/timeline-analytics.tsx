@@ -1,8 +1,16 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { BarChart3, Clock3, ListFilter, UsersRound } from "lucide-react";
+import {
+  Baby,
+  BarChart3,
+  CalendarDays,
+  ListChecks,
+  ListFilter,
+  UsersRound,
+} from "lucide-react";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -16,7 +24,7 @@ import { Input } from "@/components/ui/input";
 import type { TimelineData } from "@/lib/domain/types";
 import {
   getCareRecordItems,
-  summarizeCareTime,
+  summarizeCareRecords,
 } from "@/lib/timeline-analytics";
 
 const segmentColors = [
@@ -30,12 +38,17 @@ const segmentColors = [
   "bg-orange-600",
 ];
 
-function formatMinutes(minutes: number): string {
-  const hours = Math.floor(minutes / 60);
-  const remainder = minutes % 60;
-  if (hours === 0) return `${remainder}m`;
-  if (remainder === 0) return `${hours}h`;
-  return `${hours}h ${remainder}m`;
+function formatRecordCount(count: number): string {
+  return `${count} ${count === 1 ? "record" : "records"}`;
+}
+
+function formatRecordDate(value: string, timezone: string): string {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(new Date(value));
 }
 
 function ToggleGroup({
@@ -118,7 +131,7 @@ export function TimelineAnalytics({ data }: { data: TimelineData }) {
     .filter((id) => !hiddenCaregiverIds.includes(id));
   const summary = useMemo(
     () =>
-      summarizeCareTime(data, {
+      summarizeCareRecords(data, {
         recordItems,
         childIds,
         caregiverIds,
@@ -127,15 +140,29 @@ export function TimelineAnalytics({ data }: { data: TimelineData }) {
       }),
     [caregiverIds, childIds, data, from, recordItems, to],
   );
-  const maxCaregiverMinutes = Math.max(
+  const maxCaregiverRecords = Math.max(
     1,
-    ...summary.caregivers.map((caregiver) => caregiver.totalMinutes),
+    ...summary.caregivers.map((caregiver) => caregiver.totalRecords),
   );
-  const maxRecordItemMinutes = Math.max(
+  const maxRecordItemRecords = Math.max(
     1,
-    ...summary.recordItems.map((item) => item.minutes),
+    ...summary.recordItems.map((item) => item.count),
   );
-  const hasTimedRecords = summary.timedRecords > 0;
+  const hasRecords = summary.recordCount > 0;
+  const childNames = useMemo(
+    () => new Map(data.children.map((child) => [child.id, child.displayName])),
+    [data.children],
+  );
+  const caregiverNames = useMemo(
+    () =>
+      new Map(
+        data.caregivers.map((caregiver) => [
+          caregiver.id,
+          caregiver.displayName,
+        ]),
+      ),
+    [data.caregivers],
+  );
 
   return (
     <div className="space-y-5">
@@ -147,8 +174,8 @@ export function TimelineAnalytics({ data }: { data: TimelineData }) {
             </h2>
           </CardTitle>
           <CardDescription>
-            Toggle the factual caregiving records included in both charts. Date
-            filters use {data.workspace.timezone}.
+            Toggle the completed or partial caregiving records included in the
+            charts and record list. Date filters use {data.workspace.timezone}.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -224,148 +251,211 @@ export function TimelineAnalytics({ data }: { data: TimelineData }) {
         <Card size="sm">
           <CardContent>
             <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Recorded care time
+              Included records
             </p>
             <p className="mt-2 font-heading text-2xl font-semibold">
-              {formatMinutes(summary.recordedMinutes)}
+              {summary.recordCount}
             </p>
           </CardContent>
         </Card>
         <Card size="sm">
           <CardContent>
             <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Records with duration
+              Record items represented
             </p>
             <p className="mt-2 font-heading text-2xl font-semibold">
-              {summary.timedRecords}
+              {summary.representedRecordItemCount}
             </p>
           </CardContent>
         </Card>
         <Card size="sm">
           <CardContent>
             <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Duration not recorded
+              Caregivers represented
             </p>
             <p className="mt-2 font-heading text-2xl font-semibold">
-              {summary.untimedRecords}
+              {summary.representedCaregiverCount}
             </p>
           </CardContent>
         </Card>
       </div>
 
-      {hasTimedRecords ? (
-        <div className="grid gap-5 xl:grid-cols-2">
-          <Card>
-            <CardHeader>
-              <CardTitle>
-                <h2 className="flex items-center gap-2">
-                  <UsersRound className="size-4 text-primary" /> Time by caregiver
-                </h2>
-              </CardTitle>
-              <CardDescription>
-                Recorded duration attributed to each selected caregiver, split by
-                record item.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-5">
-              <div className="flex flex-wrap gap-x-4 gap-y-2">
-                {recordItems.map((item, index) => (
-                  <span key={item} className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <span className={`size-2.5 rounded-sm ${segmentColors[index % segmentColors.length]}`} />
-                    {item}
-                  </span>
-                ))}
-              </div>
-              <div className="space-y-5">
-                {summary.caregivers.map((caregiver) => (
-                  <div key={caregiver.id}>
+      {hasRecords ? (
+        <>
+          <div className="grid gap-5 xl:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle>
+                  <h2 className="flex items-center gap-2">
+                    <UsersRound className="size-4 text-primary" /> Records by
+                    caregiver
+                  </h2>
+                </CardTitle>
+                <CardDescription>
+                  Each bar counts included records for a caregiver, split by
+                  record item.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-5">
+                <div className="flex flex-wrap gap-x-4 gap-y-2">
+                  {recordItems.map((item, index) => (
+                    <span
+                      key={item}
+                      className="flex items-center gap-1.5 text-xs text-muted-foreground"
+                    >
+                      <span
+                        className={`size-2.5 rounded-sm ${segmentColors[index % segmentColors.length]}`}
+                      />
+                      {item}
+                    </span>
+                  ))}
+                </div>
+                <div className="space-y-5">
+                  {summary.caregivers.map((caregiver) => (
+                    <div key={caregiver.id}>
+                      <div className="mb-2 flex items-center justify-between gap-3 text-sm">
+                        <span className="font-medium">{caregiver.label}</span>
+                        <span className="tabular-nums text-muted-foreground">
+                          {formatRecordCount(caregiver.totalRecords)}
+                        </span>
+                      </div>
+                      <div
+                        className="flex h-7 overflow-hidden rounded-md bg-muted"
+                        role="img"
+                        aria-label={`${caregiver.label}: ${formatRecordCount(caregiver.totalRecords)}`}
+                      >
+                        {caregiver.recordItems.map((item, index) =>
+                          item.count > 0 ? (
+                            <span
+                              key={item.label}
+                              className={
+                                segmentColors[index % segmentColors.length]
+                              }
+                              style={{
+                                width: `${(item.count / maxCaregiverRecords) * 100}%`,
+                              }}
+                              title={`${item.label}: ${formatRecordCount(item.count)}`}
+                            />
+                          ) : null,
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>
+                  <h2 className="flex items-center gap-2">
+                    <BarChart3 className="size-4 text-primary" /> Records by item
+                  </h2>
+                </CardTitle>
+                <CardDescription>
+                  Record counts across the selected caregivers and children.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-5">
+                {summary.recordItems.map((item) => (
+                  <div key={item.label}>
                     <div className="mb-2 flex items-center justify-between gap-3 text-sm">
-                      <span className="font-medium">{caregiver.label}</span>
+                      <span className="font-medium">{item.label}</span>
                       <span className="tabular-nums text-muted-foreground">
-                        {formatMinutes(caregiver.totalMinutes)}
+                        {formatRecordCount(item.count)}
                       </span>
                     </div>
                     <div
-                      className="flex h-7 overflow-hidden rounded-md bg-muted"
+                      className="h-7 overflow-hidden rounded-md bg-muted"
                       role="img"
-                      aria-label={`${caregiver.label}: ${formatMinutes(caregiver.totalMinutes)} recorded`}
+                      aria-label={`${item.label}: ${formatRecordCount(item.count)}`}
                     >
-                      {caregiver.recordItems.map((item, index) =>
-                        item.minutes > 0 ? (
-                          <span
-                            key={item.label}
-                            className={segmentColors[index % segmentColors.length]}
-                            style={{
-                              width: `${(item.minutes / maxCaregiverMinutes) * 100}%`,
-                            }}
-                            title={`${item.label}: ${formatMinutes(item.minutes)}`}
-                          />
-                        ) : null,
-                      )}
+                      <div
+                        className="h-full rounded-md bg-primary"
+                        style={{
+                          width: `${(item.count / maxRecordItemRecords) * 100}%`,
+                        }}
+                      />
                     </div>
                   </div>
                 ))}
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          </div>
 
           <Card>
             <CardHeader>
               <CardTitle>
                 <h2 className="flex items-center gap-2">
-                  <BarChart3 className="size-4 text-primary" /> Time by record item
+                  <ListChecks className="size-4 text-primary" /> Included records
                 </h2>
               </CardTitle>
               <CardDescription>
-                Recorded duration across the selected caregivers and children.
+                The records represented above, with their children and caregivers.
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-5">
-              {summary.recordItems.map((item) => (
-                <div key={item.label}>
-                  <div className="mb-2 flex items-center justify-between gap-3 text-sm">
-                    <span className="font-medium">{item.label}</span>
-                    <span className="tabular-nums text-muted-foreground">
-                      {formatMinutes(item.minutes)}
-                    </span>
-                  </div>
-                  <div
-                    className="h-7 overflow-hidden rounded-md bg-muted"
-                    role="img"
-                    aria-label={`${item.label}: ${formatMinutes(item.minutes)} recorded`}
-                  >
-                    <div
-                      className="h-full rounded-md bg-primary"
-                      style={{
-                        width: `${(item.minutes / maxRecordItemMinutes) * 100}%`,
-                      }}
-                    />
-                  </div>
-                </div>
-              ))}
+            <CardContent className="grid gap-3 lg:grid-cols-2">
+              {summary.records.map((record) => {
+                const recordChildren = record.childIds
+                  .map((id) => childNames.get(id))
+                  .filter(Boolean)
+                  .join(" + ");
+                const recordCaregivers = record.caregiverIds
+                  .map((id) => caregiverNames.get(id))
+                  .filter(Boolean)
+                  .join(" + ");
+                return (
+                  <article key={record.id} className="rounded-xl border bg-background/70 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <h3 className="font-medium">{record.title}</h3>
+                      <Badge variant="secondary" className="capitalize">
+                        {record.status.replaceAll("_", " ")}
+                      </Badge>
+                    </div>
+                    <p className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <CalendarDays className="size-3.5" />
+                      {formatRecordDate(record.occurredAt, data.workspace.timezone)}
+                    </p>
+                    <div className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
+                      <p className="flex items-start gap-2">
+                        <Baby className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                        <span>
+                          <span className="text-xs text-muted-foreground">Children</span>
+                          <span className="block">{recordChildren || "Not listed"}</span>
+                        </span>
+                      </p>
+                      <p className="flex items-start gap-2">
+                        <UsersRound className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                        <span>
+                          <span className="text-xs text-muted-foreground">Caregivers</span>
+                          <span className="block">{recordCaregivers || "Not listed"}</span>
+                        </span>
+                      </p>
+                    </div>
+                  </article>
+                );
+              })}
             </CardContent>
           </Card>
-        </div>
+        </>
       ) : (
         <Card className="border-dashed">
           <CardContent className="p-10 text-center">
-            <Clock3 className="mx-auto size-8 text-muted-foreground" />
-            <p className="mt-3 font-medium">No recorded duration matches</p>
+            <ListChecks className="mx-auto size-8 text-muted-foreground" />
+            <p className="mt-3 font-medium">No care records match</p>
             <p className="mx-auto mt-1 max-w-lg text-sm leading-6 text-muted-foreground">
               Choose at least one record item, child, and caregiver, or widen the
-              date range. Records without a duration remain visible in the summary
-              and are never estimated.
+              date range.
             </p>
           </CardContent>
         </Card>
       )}
 
       <p className="rounded-xl bg-muted/60 px-4 py-3 text-xs leading-5 text-muted-foreground">
-        These charts summarize duration entered on completed or partial care
-        records. Planned special days are excluded. A record involving multiple
-        selected children is counted once; when multiple caregivers share one
-        record, its full duration is attributed to each caregiver in the caregiver
-        chart.
+        These charts count completed or partial care records; they do not use or
+        display recorded durations. Planned special days are excluded. A record
+        involving multiple selected children is counted once, while a record with
+        multiple caregivers appears once for each caregiver in the caregiver chart.
       </p>
     </div>
   );

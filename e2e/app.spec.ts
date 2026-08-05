@@ -109,7 +109,7 @@ test("shows the daily care workflow", async ({ page }) => {
   await expect(page.getByLabel("Next day")).toBeDisabled();
 });
 
-test("timeline time charts show recorded duration and respond to toggles", async ({ page }, testInfo) => {
+test("timeline record charts show records and respond to toggles", async ({ page }, testInfo) => {
   test.skip(
     testInfo.project.name !== "chromium",
     "Run the stateful chart interaction check once on desktop Chromium.",
@@ -120,33 +120,38 @@ test("timeline time charts show recorded duration and respond to toggles", async
     "true",
   );
 
-  await page.getByRole("tab", { name: "Time charts" }).click();
+  await page.getByRole("tab", { name: "Record charts" }).click();
   await expect(
     page.getByRole("heading", { name: "Configure charts" }),
   ).toBeVisible();
   await expect(
     page
       .locator('[data-slot="card"]')
-      .filter({ hasText: "Recorded care time" })
-      .getByText("1h 15m", { exact: true }),
+      .filter({ hasText: "Included records" })
+      .getByText("3", { exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Time by caregiver" }),
+    page.getByRole("heading", { name: "Records by caregiver" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Time by record item" }),
+    page.getByRole("heading", { name: "Records by item" }),
   ).toBeVisible();
+  const includedRecords = page
+    .locator('[data-slot="card"]')
+    .filter({ has: page.getByRole("heading", { name: "Included records" }) });
+  await expect(includedRecords.getByText("Child One", { exact: true })).toHaveCount(3);
+  await expect(includedRecords.getByText("Parent A", { exact: true })).toHaveCount(3);
 
   const caregiverFilters = page.locator("fieldset").filter({
     has: page.getByText("Caregivers", { exact: true }),
   });
   await caregiverFilters.getByRole("button", { name: "Clear" }).click();
   await expect(
-    page.getByText("No recorded duration matches", { exact: true }),
+    page.getByText("No care records match", { exact: true }),
   ).toBeVisible();
   await caregiverFilters.getByRole("button", { name: "All" }).click();
   await expect(
-    page.getByRole("heading", { name: "Time by caregiver" }),
+    page.getByRole("heading", { name: "Records by caregiver" }),
   ).toBeVisible();
 
   const results = await new AxeBuilder({ page })
@@ -166,7 +171,7 @@ test("mobile public and dashboard content stays within the viewport", async ({ p
   for (const path of ["/", "/app", "/app/special-days", "/app/timeline"]) {
     await page.goto(path);
     if (path === "/app/timeline") {
-      await page.getByRole("tab", { name: "Time charts" }).click();
+      await page.getByRole("tab", { name: "Record charts" }).click();
     }
     const layout = await page.evaluate(() => {
       const viewportWidth = document.documentElement.clientWidth;

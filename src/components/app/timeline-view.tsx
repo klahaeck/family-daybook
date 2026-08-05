@@ -58,7 +58,7 @@ export function TimelineView({ initialData, canPurge = false }: { initialData: T
     <Tabs defaultValue="timeline" className="gap-5">
       <TabsList aria-label="Timeline views" className="w-full sm:w-fit">
         <TabsTrigger value="timeline" className="px-3"><List /> Timeline</TabsTrigger>
-        <TabsTrigger value="analytics" className="px-3"><BarChart3 /> Time charts</TabsTrigger>
+        <TabsTrigger value="analytics" className="px-3"><BarChart3 /> Record charts</TabsTrigger>
       </TabsList>
       <TabsContent value="timeline" className="space-y-5">
       <Card>
