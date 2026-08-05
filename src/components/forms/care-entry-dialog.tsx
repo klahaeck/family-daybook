@@ -174,8 +174,8 @@ export function CareEntryDialog({
               </div>
               {(task?.taskKey === "time_together" || !task) && (
                 <div className="space-y-2">
-                  <Label htmlFor="durationMinutes">Duration in minutes</Label>
-                  <Input id="durationMinutes" name="durationMinutes" type="number" min={1} max={1440} required={task?.taskKey === "time_together"} defaultValue={task?.entry?.durationMinutes} placeholder="30" />
+                  <Label htmlFor="durationMinutes">Duration in minutes (optional)</Label>
+                  <Input id="durationMinutes" name="durationMinutes" type="number" min={1} max={1440} defaultValue={task?.entry?.durationMinutes} placeholder="30" />
                 </div>
               )}
             </div>

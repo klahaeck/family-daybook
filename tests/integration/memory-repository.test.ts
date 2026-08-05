@@ -53,12 +53,13 @@ describe("memory repository integration", () => {
     const dashboard = await repository.getDashboard(context, "2026-07-14");
     const entry = await repository.createCareEntry(context, {
       localDate: "2026-07-14",
-      taskKey: "custom",
-      taskLabel: "Prepared snack",
+      taskKey: "time_together",
+      taskLabel: "Time together",
       childIds: [dashboard.children[0].id],
       caregiverIds: [dashboard.caregivers[0].id],
       status: "completed",
       occurredAt: "2026-07-14T12:00:00.000Z",
+      durationMinutes: 30,
       notes: "Prepared fruit.",
     });
 
@@ -71,6 +72,7 @@ describe("memory repository integration", () => {
       notes: "Prepared sliced fruit.",
     });
 
+    expect(updated.durationMinutes).toBeUndefined();
     expect(updated).toMatchObject({
       id: entry.id,
       currentRevisionId: entry.currentRevisionId,
@@ -84,6 +86,7 @@ describe("memory repository integration", () => {
       status: "partial",
       notes: "Prepared sliced fruit.",
     });
+    expect(bundle?.revisions[0].payload).not.toHaveProperty("durationMinutes");
     expect((await repository.getTimeline(context)).items.find((item) => item.id === entry.id)?.dailyLogStatus).toBe("open");
     await expect(
       repository.correctRecord(context, {
@@ -113,12 +116,13 @@ describe("memory repository integration", () => {
     const dashboard = await repository.getDashboard(context, "2026-07-14");
     const entry = await repository.createCareEntry(context, {
       localDate: "2026-07-14",
-      taskKey: "custom",
-      taskLabel: "Prepared snack",
+      taskKey: "time_together",
+      taskLabel: "Time together",
       childIds: [dashboard.children[0].id],
       caregiverIds: [dashboard.caregivers[0].id],
       status: "completed",
       occurredAt: "2026-07-14T12:00:00.000Z",
+      durationMinutes: 30,
       notes: "Prepared fruit.",
     });
 
@@ -140,6 +144,11 @@ describe("memory repository integration", () => {
       occurredAt: "2026-07-14T13:30:00.000Z",
       notes: "Prepared sliced fruit.",
     });
+    expect(
+      bundle?.record && "durationMinutes" in bundle.record
+        ? bundle.record.durationMinutes
+        : undefined,
+    ).toBeUndefined();
     expect(bundle?.revisions).toHaveLength(2);
     expect(bundle?.revisions[0].payload).toMatchObject({
       status: "completed",
@@ -149,6 +158,7 @@ describe("memory repository integration", () => {
       status: "partial",
       notes: "Prepared sliced fruit.",
     });
+    expect(bundle?.revisions[1].payload).not.toHaveProperty("durationMinutes");
   });
 
   it("blocks reviewer mutations at the repository boundary", async () => {

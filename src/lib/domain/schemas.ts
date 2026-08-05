@@ -32,15 +32,6 @@ export const careEntrySchema = z
     durationMinutes: z.coerce.number().int().min(1).max(1440).optional(),
     activityType: z.string().trim().max(100).optional(),
     notes: z.string().trim().max(2000).optional(),
-  })
-  .superRefine((value, context) => {
-    if (value.taskKey === "time_together" && !value.durationMinutes) {
-      context.addIssue({
-        code: "custom",
-        path: ["durationMinutes"],
-        message: "Add the duration for time together",
-      });
-    }
   });
 
 export const careEntryCorrectionSchema = z.object({

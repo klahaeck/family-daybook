@@ -544,9 +544,6 @@ export class MemoryParentingRepository implements ParentingRepository {
     const dailyLog = data.dailyLogs.find((log) => log.id === entry.dailyLogId);
     if (!dailyLog) throw new Error("NOT_FOUND");
     if (dailyLog.status !== "open") throw new Error("DAY_FINALIZED");
-    if (entry.taskKey === "time_together" && !input.durationMinutes) {
-      throw new Error("DURATION_REQUIRED");
-    }
     const revision = data.revisions.find(
       (item) => item.id === entry.currentRevisionId,
     );
@@ -606,9 +603,6 @@ export class MemoryParentingRepository implements ParentingRepository {
     const dailyLog = data.dailyLogs.find((log) => log.id === entry.dailyLogId);
     if (!dailyLog) throw new Error("NOT_FOUND");
     if (dailyLog.status !== "finalized") throw new Error("DAY_NOT_FINALIZED");
-    if (entry.taskKey === "time_together" && !input.durationMinutes) {
-      throw new Error("DURATION_REQUIRED");
-    }
     const previous = data.revisions.find(
       (revision) => revision.id === entry.currentRevisionId,
     );
@@ -626,6 +620,9 @@ export class MemoryParentingRepository implements ParentingRepository {
       notes: input.notes,
     };
     const payload = { ...recordPayload(entry), ...correction, occurredAt };
+    for (const field of ["durationMinutes", "activityType", "notes"] as const) {
+      if (correction[field] === undefined) delete payload[field];
+    }
     const revision: RecordRevision = {
       id: id("rev"),
       workspaceId: data.workspace.id,

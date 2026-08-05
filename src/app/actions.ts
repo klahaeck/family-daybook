@@ -128,10 +128,6 @@ export async function correctCareEntryAction(
     if (correctedDate !== originalDate) {
       return { ok: false, error: "The corrected time must stay on the original log date." };
     }
-    if (bundle.record.taskKey === "time_together" && !parsed.data.durationMinutes) {
-      return { ok: false, error: "Add the duration for time together." };
-    }
-
     const revision = await repository.correctCareEntry(context, parsed.data);
     refreshRecords();
     return { ok: true, data: { revisionId: revision.id } };
@@ -166,10 +162,6 @@ export async function updateCareEntryAction(
     if (updatedDate !== originalDate) {
       return { ok: false, error: "The updated time must stay on the original log date." };
     }
-    if (bundle.record.taskKey === "time_together" && !parsed.data.durationMinutes) {
-      return { ok: false, error: "Add the duration for time together." };
-    }
-
     const entry = await repository.updateCareEntry(context, parsed.data);
     refreshRecords();
     return { ok: true, data: { id: entry.id } };

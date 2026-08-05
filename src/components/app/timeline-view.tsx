@@ -2,8 +2,9 @@
 
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { CalendarDays, CalendarRange, Clock3, Download, Filter, HeartHandshake, ShieldAlert } from "lucide-react";
+import { BarChart3, CalendarDays, CalendarRange, Clock3, Download, Filter, HeartHandshake, List, ShieldAlert } from "lucide-react";
 
+import { TimelineAnalytics } from "@/components/app/timeline-analytics";
 import { CorrectionDialog } from "@/components/forms/correction-dialog";
 import { PurgeDialog } from "@/components/forms/purge-dialog";
 import { RevisionHistoryDialog } from "@/components/forms/revision-history-dialog";
@@ -11,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatDateTime, formatDay, localDateInTimezone } from "@/lib/domain/dates";
 import { fetchTimeline } from "@/lib/fetchers";
 import type { RecordType, TimelineData } from "@/lib/domain/types";
@@ -53,7 +55,12 @@ export function TimelineView({ initialData, canPurge = false }: { initialData: T
   );
 
   return (
-    <div className="space-y-5">
+    <Tabs defaultValue="timeline" className="gap-5">
+      <TabsList aria-label="Timeline views" className="w-full sm:w-fit">
+        <TabsTrigger value="timeline" className="px-3"><List /> Timeline</TabsTrigger>
+        <TabsTrigger value="analytics" className="px-3"><BarChart3 /> Time charts</TabsTrigger>
+      </TabsList>
+      <TabsContent value="timeline" className="space-y-5">
       <Card>
         <CardContent className="grid gap-3 p-4 lg:grid-cols-[minmax(12rem,1fr)_auto_auto_auto]">
           <div className="relative"><Filter className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search factual notes" className="pl-9" aria-label="Search timeline" /></div>
@@ -115,6 +122,10 @@ export function TimelineView({ initialData, canPurge = false }: { initialData: T
         })}
         {filtered.length === 0 && <Card className="ml-12 border-dashed sm:ml-16"><CardContent className="p-10 text-center text-sm text-muted-foreground">No records match these filters.</CardContent></Card>}
       </div>
-    </div>
+      </TabsContent>
+      <TabsContent value="analytics">
+        <TimelineAnalytics data={data} />
+      </TabsContent>
+    </Tabs>
   );
 }

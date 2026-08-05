@@ -648,9 +648,6 @@ export class MongoParentingRepository implements ParentingRepository {
       workspaceId: context.workspace.id,
     });
     if (!entry) throw new Error("NOT_FOUND");
-    if (entry.taskKey === "time_together" && !input.durationMinutes) {
-      throw new Error("DURATION_REQUIRED");
-    }
     const revision = await (await col<RecordRevision>("recordRevisions")).findOne({
       id: entry.currentRevisionId,
       workspaceId: context.workspace.id,
@@ -750,9 +747,6 @@ export class MongoParentingRepository implements ParentingRepository {
     });
     if (!dailyLog) throw new Error("NOT_FOUND");
     if (dailyLog.status !== "finalized") throw new Error("DAY_NOT_FINALIZED");
-    if (entry.taskKey === "time_together" && !input.durationMinutes) {
-      throw new Error("DURATION_REQUIRED");
-    }
     const previous = await (await col<RecordRevision>("recordRevisions")).findOne({
       id: entry.currentRevisionId,
       workspaceId: context.workspace.id,
@@ -771,6 +765,9 @@ export class MongoParentingRepository implements ParentingRepository {
       notes: input.notes,
     };
     const payload = { ...recordPayload(toPlainData(entry)), ...correction, occurredAt };
+    for (const field of ["durationMinutes", "activityType", "notes"] as const) {
+      if (correction[field] === undefined) delete payload[field];
+    }
     const revision: RecordRevision = {
       id: id("rev"),
       workspaceId: context.workspace.id,

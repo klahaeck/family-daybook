@@ -189,16 +189,19 @@ export function createSeedState(
       {
         item: template.items[0],
         minutesAgo: 150,
+        durationMinutes: 20,
         children: children.map((child) => child.id),
       },
       {
         item: template.items[2],
         minutesAgo: 120,
+        durationMinutes: 30,
         children: children.map((child) => child.id),
       },
       {
         item: template.items[4],
         minutesAgo: 75,
+        durationMinutes: 25,
         children: [children[0].id],
       },
     ];
@@ -213,6 +216,7 @@ export function createSeedState(
         caregiverIds: [caregivers[0].id],
         status: "completed",
         occurredAt,
+        durationMinutes: example.durationMinutes,
         notes: "Sample record — replace this workspace before real use.",
       };
       const revision = createSeedRevision(
@@ -236,6 +240,7 @@ export function createSeedState(
         status: "completed",
         occurredAt,
         recordedAt: nowIso,
+        durationMinutes: example.durationMinutes,
         notes: "Sample record — replace this workspace before real use.",
         currentRevisionId: revision.id,
         createdBy: members[0].id,

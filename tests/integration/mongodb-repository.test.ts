@@ -26,12 +26,13 @@ describe.skipIf(!configured)("MongoDB repository integration", () => {
     const dashboard = await repository.getDashboard(context, "2026-07-14");
     const entry = await repository.createCareEntry(context, {
       localDate: "2026-07-14",
-      taskKey: "custom",
-      taskLabel: "Prepared school materials",
+      taskKey: "time_together",
+      taskLabel: "Time together",
       childIds: [dashboard.children[0].id],
       caregiverIds: [dashboard.caregivers[0].id],
       status: "completed",
       occurredAt: "2026-07-14T12:00:00.000Z",
+      durationMinutes: 30,
     });
     const bundle = await repository.getRecordBundle(context, "care_entry", entry.id);
     expect(bundle?.revisions).toHaveLength(1);
@@ -45,7 +46,13 @@ describe.skipIf(!configured)("MongoDB repository integration", () => {
       occurredAt: "2026-07-14T12:15:00.000Z",
       notes: "Updated details.",
     });
-    expect((await repository.getRecordBundle(context, "care_entry", entry.id))?.revisions).toHaveLength(1);
+    const updatedBundle = await repository.getRecordBundle(context, "care_entry", entry.id);
+    expect(
+      updatedBundle?.record && "durationMinutes" in updatedBundle.record
+        ? updatedBundle.record.durationMinutes
+        : undefined,
+    ).toBeUndefined();
+    expect(updatedBundle?.revisions).toHaveLength(1);
 
     await repository.finalizeDailyLog(context, "2026-07-14");
 
@@ -64,7 +71,13 @@ describe.skipIf(!configured)("MongoDB repository integration", () => {
       occurredAt: "2026-07-14T12:30:00.000Z",
       notes: "Corrected details.",
     });
+    expect(
+      correctedBundle?.record && "durationMinutes" in correctedBundle.record
+        ? correctedBundle.record.durationMinutes
+        : undefined,
+    ).toBeUndefined();
     expect(correctedBundle?.revisions).toHaveLength(2);
+    expect(correctedBundle?.revisions[1].payload).not.toHaveProperty("durationMinutes");
     expect(correctedBundle?.revisions[1].payload).not.toHaveProperty("_id");
 
     const secondContext = await repository.resolveContext({

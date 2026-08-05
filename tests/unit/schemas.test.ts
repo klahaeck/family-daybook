@@ -11,7 +11,7 @@ import {
 } from "@/lib/domain/schemas";
 
 describe("domain validation", () => {
-  it("requires a duration for time together", () => {
+  it("allows time together without a duration", () => {
     const result = careEntrySchema.safeParse({
       localDate: "2026-07-14",
       taskKey: "time_together",
@@ -21,7 +21,7 @@ describe("domain validation", () => {
       status: "completed",
       occurredAt: "2026-07-14T18:00:00.000Z",
     });
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
   });
 
   it("requires a reason when correcting a care entry", () => {

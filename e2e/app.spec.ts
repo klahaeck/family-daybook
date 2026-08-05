@@ -109,11 +109,65 @@ test("shows the daily care workflow", async ({ page }) => {
   await expect(page.getByLabel("Next day")).toBeDisabled();
 });
 
+test("timeline time charts show recorded duration and respond to toggles", async ({ page }, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "chromium",
+    "Run the stateful chart interaction check once on desktop Chromium.",
+  );
+  await page.goto("/app/timeline");
+  await expect(page.getByRole("tab", { name: "Timeline" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+
+  await page.getByRole("tab", { name: "Time charts" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Configure charts" }),
+  ).toBeVisible();
+  await expect(
+    page
+      .locator('[data-slot="card"]')
+      .filter({ hasText: "Recorded care time" })
+      .getByText("1h 15m", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Time by caregiver" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Time by record item" }),
+  ).toBeVisible();
+
+  const caregiverFilters = page.locator("fieldset").filter({
+    has: page.getByText("Caregivers", { exact: true }),
+  });
+  await caregiverFilters.getByRole("button", { name: "Clear" }).click();
+  await expect(
+    page.getByText("No recorded duration matches", { exact: true }),
+  ).toBeVisible();
+  await caregiverFilters.getByRole("button", { name: "All" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Time by caregiver" }),
+  ).toBeVisible();
+
+  const results = await new AxeBuilder({ page })
+    .disableRules(["color-contrast"])
+    .analyze();
+  expect(
+    results.violations.filter(
+      (violation) =>
+        violation.impact === "critical" || violation.impact === "serious",
+    ),
+  ).toEqual([]);
+});
+
 test("mobile public and dashboard content stays within the viewport", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "mobile", "This regression targets the narrow mobile layout.");
 
-  for (const path of ["/", "/app", "/app/special-days"]) {
+  for (const path of ["/", "/app", "/app/special-days", "/app/timeline"]) {
     await page.goto(path);
+    if (path === "/app/timeline") {
+      await page.getByRole("tab", { name: "Time charts" }).click();
+    }
     const layout = await page.evaluate(() => {
       const viewportWidth = document.documentElement.clientWidth;
       const visibleElements = Array.from(

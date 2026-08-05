@@ -75,6 +75,7 @@ export function toTimelineItems(input: {
           childIds: entry.childIds,
           caregiverIds: entry.caregiverIds,
           status: entry.status,
+          durationMinutes: entry.durationMinutes,
           lateEntry: entry.lateEntry,
           dailyLogStatus: input.dailyLogs.find((log) => log.id === entry.dailyLogId)?.status,
           currentRevisionId: entry.currentRevisionId,
