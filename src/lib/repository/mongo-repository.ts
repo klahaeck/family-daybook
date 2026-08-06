@@ -36,6 +36,7 @@ import type {
   CareEntryInput,
   CareEntryUpdateInput,
   CorrectionInput,
+  DailyLogNotesInput,
   IncidentInput,
   ReportInput,
   SpecialArrangementCorrectionInput,
@@ -925,6 +926,34 @@ export class MongoParentingRepository implements ParentingRepository {
       });
     });
     return toPlainData(revision);
+  }
+
+  async updateDailyLogNotes(
+    context: RequestContext,
+    input: DailyLogNotesInput,
+  ) {
+    requireOwner(context.member.role);
+    const log = await this.ensureDailyLog(context, input.localDate);
+    await this.transaction(async (session) => {
+      const update = input.notes
+        ? { $set: { notes: input.notes } }
+        : { $unset: { notes: "" } };
+      const openLog = await (await col<DailyLog>("dailyLogs")).updateOne(
+        {
+          id: log.id,
+          workspaceId: context.workspace.id,
+          status: "open",
+        },
+        update,
+        { session },
+      );
+      if (!openLog.matchedCount) throw new Error("DAY_FINALIZED");
+      await this.insertAudit(context, "updated", "daily_log", log.id, session);
+    });
+    return toPlainData({
+      ...log,
+      notes: input.notes || undefined,
+    });
   }
 
   async finalizeDailyLog(context: RequestContext, localDate: string) {

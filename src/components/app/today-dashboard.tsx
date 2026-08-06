@@ -1,22 +1,24 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { CalendarRange, CheckCircle2, ChevronLeft, ChevronRight, Clock3, LockKeyhole, Users } from "lucide-react";
 
-import { finalizeDailyLogAction } from "@/app/actions";
+import { finalizeDailyLogAction, updateDailyLogNotesAction } from "@/app/actions";
 import { CareEntryDialog } from "@/components/forms/care-entry-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
+import { Textarea } from "@/components/ui/textarea";
 import { formatDay, formatTime, isValidLocalDate, shiftLocalDate } from "@/lib/domain/dates";
 import { fetchDashboard } from "@/lib/fetchers";
 import { sortRoutineItemsByTime } from "@/lib/domain/routines";
-import type { DashboardData } from "@/lib/domain/types";
+import type { DailyLog, DashboardData } from "@/lib/domain/types";
 
 function childNames(ids: string[], data: DashboardData) {
   return ids.map((id) => data.children.find((child) => child.id === id)?.displayName).filter(Boolean).join(" + ");
@@ -27,6 +29,85 @@ function caregiverNames(ids: string[], data: DashboardData) {
     .map((id) => data.caregivers.find((caregiver) => caregiver.id === id)?.displayName)
     .filter(Boolean)
     .join(" + ");
+}
+
+function DailyLogNotes({ dailyLog }: { dailyLog: DailyLog }) {
+  const queryClient = useQueryClient();
+  const [notes, setNotes] = useState(dailyLog.notes ?? "");
+  const finalized = dailyLog.status === "finalized";
+  const notesId = `daily-log-notes-${dailyLog.id}`;
+  const descriptionId = `${notesId}-description`;
+  const mutation = useMutation({
+    mutationFn: async () => {
+      const result = await updateDailyLogNotesAction({
+        localDate: dailyLog.localDate,
+        notes,
+      });
+      if (!result.ok) throw new Error(result.error ?? "Unable to save day notes");
+      return result.data?.notes ?? "";
+    },
+    onSuccess: async (savedNotes) => {
+      setNotes(savedNotes);
+      await queryClient.invalidateQueries({
+        queryKey: ["dashboard", dailyLog.localDate],
+      });
+    },
+  });
+
+  return (
+    <Card>
+      <CardContent className="p-5">
+        <form action={() => mutation.mutate()} className="space-y-3">
+          <div>
+            <Label htmlFor={notesId}>Day notes (optional)</Label>
+            <p id={descriptionId} className="mt-1 text-sm text-muted-foreground">
+              {finalized
+                ? "These notes were locked when the day was finalized."
+                : "Add factual context that applies to the day as a whole."}
+            </p>
+          </div>
+          <Textarea
+            id={notesId}
+            name="notes"
+            value={notes}
+            onChange={(event) => {
+              setNotes(event.target.value);
+              mutation.reset();
+            }}
+            maxLength={2000}
+            rows={4}
+            readOnly={finalized}
+            disabled={mutation.isPending}
+            aria-describedby={descriptionId}
+            aria-invalid={mutation.isError}
+            placeholder="Add notes about the day"
+            className={finalized ? "bg-muted/30" : undefined}
+          />
+          <div className="flex min-h-9 flex-wrap items-center justify-between gap-3">
+            <div aria-live="polite" className="text-sm">
+              {mutation.isError && (
+                <p role="alert" className="text-destructive">
+                  {mutation.error.message}
+                </p>
+              )}
+              {mutation.isSuccess && !finalized && (
+                <p className="text-muted-foreground">Day notes saved.</p>
+              )}
+            </div>
+            {!finalized && (
+              <Button
+                type="submit"
+                size="sm"
+                disabled={mutation.isPending || notes === (dailyLog.notes ?? "")}
+              >
+                {mutation.isPending ? "Saving…" : "Save notes"}
+              </Button>
+            )}
+          </div>
+        </form>
+      </CardContent>
+    </Card>
+  );
 }
 
 export function TodayDashboard({ date, today, initialData }: { date: string; today: string; initialData: DashboardData }) {
@@ -247,6 +328,11 @@ export function TodayDashboard({ date, today, initialData }: { date: string; tod
           })}
         </div>
       </section>
+
+      <DailyLogNotes
+        key={`${data.dailyLog.id}-${data.dailyLog.status}`}
+        dailyLog={data.dailyLog}
+      />
 
       {data.dailyLog.status === "open" && (
         <Card className="border-dashed">

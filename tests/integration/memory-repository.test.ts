@@ -20,6 +20,42 @@ const identity: Identity = {
 describe("memory repository integration", () => {
   beforeEach(() => resetMemoryRepository());
 
+  it("stores day notes while open and locks them at finalization", async () => {
+    const repository = new MemoryParentingRepository();
+    const context = await repository.resolveContext(identity);
+    const localDate = "2026-07-14";
+
+    const saved = await repository.updateDailyLogNotes(context, {
+      localDate,
+      notes: "School called about tomorrow's schedule.",
+    });
+    expect(saved.notes).toBe("School called about tomorrow's schedule.");
+    expect((await repository.getDashboard(context, localDate)).dailyLog.notes).toBe(
+      "School called about tomorrow's schedule.",
+    );
+
+    const cleared = await repository.updateDailyLogNotes(context, {
+      localDate,
+      notes: "",
+    });
+    expect(cleared.notes).toBeUndefined();
+
+    await repository.updateDailyLogNotes(context, {
+      localDate,
+      notes: "Saved before finalization.",
+    });
+    await repository.finalizeDailyLog(context, localDate);
+    expect((await repository.getDashboard(context, localDate)).dailyLog.notes).toBe(
+      "Saved before finalization.",
+    );
+    await expect(
+      repository.updateDailyLogNotes(context, {
+        localDate,
+        notes: "Changed after finalization.",
+      }),
+    ).rejects.toThrow("DAY_FINALIZED");
+  });
+
   it("creates an append-only correction revision", async () => {
     const repository = new MemoryParentingRepository();
     const context = await repository.resolveContext(identity);

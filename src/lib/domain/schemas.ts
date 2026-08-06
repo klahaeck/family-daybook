@@ -53,6 +53,11 @@ export const careEntryTextUpdateSchema = z.object({
   notes: z.string().trim().min(1).max(2000),
 });
 
+export const dailyLogNotesSchema = z.object({
+  localDate: z.string().date(),
+  notes: z.string().trim().max(2000),
+});
+
 export const appointmentSchema = z.object({
   childIds: idArray,
   title: z.string().trim().min(2).max(160),
@@ -350,6 +355,7 @@ export const purgeSchema = z.object({
 export type CareEntryInput = z.infer<typeof careEntrySchema>;
 export type CareEntryUpdateInput = z.infer<typeof careEntryUpdateSchema>;
 export type CareEntryCorrectionInput = z.infer<typeof careEntryCorrectionSchema>;
+export type DailyLogNotesInput = z.infer<typeof dailyLogNotesSchema>;
 export type AppointmentInput = z.infer<typeof appointmentSchema>;
 export type IncidentInput = z.infer<typeof incidentSchema>;
 export type CorrectionInput = z.infer<typeof correctionSchema>;

@@ -113,6 +113,7 @@ export interface DailyLog {
   localDate: string;
   templateVersion: number;
   status: "open" | "finalized";
+  notes?: string;
   finalizedAt?: string;
   finalizedBy?: string;
 }

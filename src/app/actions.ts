@@ -13,6 +13,7 @@ import {
   careEntryTextUpdateSchema,
   careEntryUpdateSchema,
   correctionSchema,
+  dailyLogNotesSchema,
   incidentSchema,
   inviteSchema,
   purgeSchema,
@@ -192,6 +193,26 @@ export async function updateCareEntryNotesAction(
     });
     refreshRecords();
     return { ok: true, data: { id: entry.id } };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function updateDailyLogNotesAction(
+  input: unknown,
+): Promise<ActionResult<{ notes?: string }>> {
+  const parsed = dailyLogNotesSchema.safeParse(input);
+  if (!parsed.success) return validationFailure(parsed.error);
+  try {
+    const repository = await getRepository();
+    const context = await getRequestContext();
+    const today = localDateInTimezone(new Date(), context.workspace.timezone);
+    if (parsed.data.localDate > today) {
+      return { ok: false, error: "Day notes cannot be added to a future date." };
+    }
+    const log = await repository.updateDailyLogNotes(context, parsed.data);
+    refreshRecords();
+    return { ok: true, data: { notes: log.notes } };
   } catch (error) {
     return fail(error);
   }

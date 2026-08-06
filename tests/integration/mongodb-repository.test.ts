@@ -24,6 +24,14 @@ describe.skipIf(!configured)("MongoDB repository integration", () => {
       demo: false,
     });
     const dashboard = await repository.getDashboard(context, "2026-07-14");
+    const notedLog = await repository.updateDailyLogNotes(context, {
+      localDate: "2026-07-14",
+      notes: "School called about tomorrow's schedule.",
+    });
+    expect(notedLog.notes).toBe("School called about tomorrow's schedule.");
+    expect(
+      (await repository.getDashboard(context, "2026-07-14")).dailyLog.notes,
+    ).toBe("School called about tomorrow's schedule.");
     const entry = await repository.createCareEntry(context, {
       localDate: "2026-07-14",
       taskKey: "time_together",
@@ -55,6 +63,12 @@ describe.skipIf(!configured)("MongoDB repository integration", () => {
     expect(updatedBundle?.revisions).toHaveLength(1);
 
     await repository.finalizeDailyLog(context, "2026-07-14");
+    await expect(
+      repository.updateDailyLogNotes(context, {
+        localDate: "2026-07-14",
+        notes: "Changed after finalization.",
+      }),
+    ).rejects.toThrow("DAY_FINALIZED");
 
     await repository.correctCareEntry(context, {
       recordId: entry.id,

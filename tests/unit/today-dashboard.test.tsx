@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
 
 import { TodayDashboard } from "@/components/app/today-dashboard";
+import { updateDailyLogNotesAction } from "@/app/actions";
 import { createSeedState } from "@/lib/repository/seed";
 import type { DashboardData } from "@/lib/domain/types";
 
@@ -17,6 +18,7 @@ vi.mock("@/app/actions", () => ({
   createCareEntryAction: vi.fn(),
   finalizeDailyLogAction: vi.fn(),
   updateCareEntryAction: vi.fn(),
+  updateDailyLogNotesAction: vi.fn(),
 }));
 
 vi.mock("@/lib/fetchers", () => ({
@@ -26,10 +28,12 @@ vi.mock("@/lib/fetchers", () => ({
 function renderDashboard(
   status: "open" | "finalized" = "open",
   specialArrangement = false,
+  notes?: string,
 ) {
   const state = createSeedState(true);
   const dailyLog = state.dailyLogs[0];
   dailyLog.status = status;
+  dailyLog.notes = notes;
   const template = state.templates[0];
   let tasks: DashboardData["tasks"] = template.items.map((item) => ({
     ...item,
@@ -121,6 +125,51 @@ function renderDashboard(
 }
 
 describe("TodayDashboard", () => {
+  it("shows the day notes field below the record items and saves it", async () => {
+    vi.mocked(updateDailyLogNotesAction).mockResolvedValueOnce({
+      ok: true,
+      data: { notes: "School called about tomorrow's schedule." },
+    });
+    renderDashboard();
+
+    const field = screen.getByLabelText("Day notes (optional)");
+    const routineSection = screen
+      .getByRole("heading", { name: "Today’s routine" })
+      .closest("section");
+    expect(routineSection).not.toBeNull();
+    expect(
+      routineSection!.compareDocumentPosition(field) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    fireEvent.change(field, {
+      target: { value: "School called about tomorrow's schedule." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save notes" }));
+
+    await waitFor(() =>
+      expect(updateDailyLogNotesAction).toHaveBeenCalledWith({
+        localDate: expect.any(String),
+        notes: "School called about tomorrow's schedule.",
+      }),
+    );
+    expect(await screen.findByText("Day notes saved.")).toBeInTheDocument();
+  });
+
+  it("shows finalized day notes as read-only", () => {
+    renderDashboard("finalized", false, "Saved before finalization.");
+
+    expect(screen.getByLabelText("Day notes (optional)")).toHaveValue(
+      "Saved before finalization.",
+    );
+    expect(screen.getByLabelText("Day notes (optional)")).toHaveAttribute(
+      "readonly",
+    );
+    expect(
+      screen.queryByRole("button", { name: "Save notes" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("opens an unfinalized routine item as a normal edit", () => {
     const { tasks } = renderDashboard();
     const completed = tasks.find((task) => task.entry);

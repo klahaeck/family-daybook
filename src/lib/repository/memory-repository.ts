@@ -33,6 +33,7 @@ import type {
   CareEntryInput,
   CareEntryUpdateInput,
   CorrectionInput,
+  DailyLogNotesInput,
   IncidentInput,
   ReportInput,
   SpecialArrangementCorrectionInput,
@@ -774,6 +775,20 @@ export class MemoryParentingRepository implements ParentingRepository {
       revisionNumber: revision.revisionNumber,
     }, previous.hash);
     return revision;
+  }
+
+  async updateDailyLogNotes(
+    context: RequestContext,
+    input: DailyLogNotesInput,
+  ) {
+    requireOwner(context.member.role);
+    const data = state();
+    const log = ensureDailyLog(data, input.localDate);
+    if (log.status !== "open") throw new Error("DAY_FINALIZED");
+    if (input.notes) log.notes = input.notes;
+    else delete log.notes;
+    await this.audit(context, "updated", "daily_log", log.id);
+    return log;
   }
 
   async finalizeDailyLog(context: RequestContext, localDate: string) {

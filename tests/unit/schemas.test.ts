@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   careEntryCorrectionSchema,
   careEntrySchema,
+  dailyLogNotesSchema,
   incidentSchema,
   reportSchema,
   specialArrangementCorrectionSchema,
@@ -34,6 +35,30 @@ describe("domain validation", () => {
       reason: "no",
     });
     expect(result.success).toBe(false);
+  });
+
+  it("allows an optional bounded note for a daily log", () => {
+    expect(
+      dailyLogNotesSchema.safeParse({
+        localDate: "2026-07-14",
+        notes: "  School called about tomorrow's schedule.  ",
+      }),
+    ).toMatchObject({
+      success: true,
+      data: { notes: "School called about tomorrow's schedule." },
+    });
+    expect(
+      dailyLogNotesSchema.safeParse({
+        localDate: "2026-07-14",
+        notes: "",
+      }).success,
+    ).toBe(true);
+    expect(
+      dailyLogNotesSchema.safeParse({
+        localDate: "2026-07-14",
+        notes: "x".repeat(2001),
+      }).success,
+    ).toBe(false);
   });
 
   it("requires observable incident detail", () => {

@@ -23,6 +23,7 @@ import type {
   CareEntryInput,
   CareEntryUpdateInput,
   CorrectionInput,
+  DailyLogNotesInput,
   IncidentInput,
   ReportInput,
   WorkspaceSettingsInput,
@@ -102,6 +103,10 @@ export interface ParentingRepository {
     context: RequestContext,
     input: CorrectionInput,
   ): Promise<RecordRevision>;
+  updateDailyLogNotes(
+    context: RequestContext,
+    input: DailyLogNotesInput,
+  ): Promise<DailyLog>;
   finalizeDailyLog(
     context: RequestContext,
     localDate: string,
