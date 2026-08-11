@@ -322,7 +322,7 @@ export interface DashboardData {
   caregivers: Caregiver[];
   tasks: TodayTask[];
   specialArrangement?: SpecialArrangementDay;
-  completion: { completed: number; total: number; percent: number };
+  completion: { recorded: number; total: number; percent: number };
   recentEntries: CareEntry[];
 }
 

@@ -3,6 +3,7 @@ import "server-only";
 import type { ClientSession, Collection, Document } from "mongodb";
 
 import { collection, ensureMongoIndexes, getMongoClient } from "@/lib/db/mongodb";
+import { assertValidCareEntryDetails } from "@/lib/domain/care-entry-rules";
 import {
   lateEntryFor,
   localDateInTimezone,
@@ -300,9 +301,7 @@ export class MongoParentingRepository implements ParentingRepository {
             plannedCaregiverIds: [],
             entry: dayEntries.find((entry) => entry.templateItemId === item.id),
           }));
-    const completed = tasks.filter(
-      (task) => task.entry?.status === "completed" || task.entry?.status === "not_applicable",
-    ).length;
+    const recorded = tasks.filter((task) => Boolean(task.entry)).length;
     return toPlainData({
       workspace: context.workspace,
       member: context.member,
@@ -313,9 +312,9 @@ export class MongoParentingRepository implements ParentingRepository {
       tasks,
       specialArrangement: specialArrangement ?? undefined,
       completion: {
-        completed,
+        recorded,
         total: tasks.length,
-        percent: tasks.length ? Math.round((completed / tasks.length) * 100) : 0,
+        percent: tasks.length ? Math.round((recorded / tasks.length) * 100) : 0,
       },
       recentEntries: dayEntries,
     });
@@ -601,13 +600,18 @@ export class MongoParentingRepository implements ParentingRepository {
           taskLabel: arrangementTask.label,
         }
       : input;
+    assertValidCareEntryDetails(normalizedInput);
     const recordedAt = new Date().toISOString();
     const recordId = id("care");
+    const revisionPayload: Record<string, unknown> = { ...normalizedInput };
+    for (const field of ["durationMinutes", "activityType", "notes"] as const) {
+      if (normalizedInput[field] === undefined) delete revisionPayload[field];
+    }
     const revision = this.initialRevision(
       context,
       "care_entry",
       recordId,
-      { ...normalizedInput },
+      revisionPayload,
       recordedAt,
     );
     const entry: CareEntry = {
@@ -634,6 +638,9 @@ export class MongoParentingRepository implements ParentingRepository {
         context.workspace.timezone,
       ),
     };
+    for (const field of ["durationMinutes", "activityType", "notes"] as const) {
+      if (entry[field] === undefined) delete entry[field];
+    }
     await this.transaction(async (session) => {
       await (await col<CareEntry>("careEntries")).insertOne(entry, { session });
       await (await col<RecordRevision>("recordRevisions")).insertOne(revision, { session });
@@ -644,6 +651,7 @@ export class MongoParentingRepository implements ParentingRepository {
 
   async updateCareEntry(context: RequestContext, input: CareEntryUpdateInput) {
     requireOwner(context.member.role);
+    assertValidCareEntryDetails(input);
     const entry = await (await col<CareEntry>("careEntries")).findOne({
       id: input.recordId,
       workspaceId: context.workspace.id,
@@ -737,6 +745,7 @@ export class MongoParentingRepository implements ParentingRepository {
 
   async correctCareEntry(context: RequestContext, input: CareEntryCorrectionInput) {
     requireOwner(context.member.role);
+    assertValidCareEntryDetails(input);
     const entry = await (await col<CareEntry>("careEntries")).findOne({
       id: input.recordId,
       workspaceId: context.workspace.id,

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { TimelineData, TimelineItem } from "@/lib/domain/types";
+import { toTimelineItems } from "@/lib/repository/helpers";
 import {
   getCareRecordItems,
   summarizeCareRecords,
@@ -91,14 +92,53 @@ const data: TimelineData = {
     }),
     careItem("missed", {
       title: "School pickup",
+      caregiverIds: [],
       status: "missed",
+    }),
+    careItem("not-applicable", {
+      title: "Pack school lunch",
+      caregiverIds: [],
+      status: "not_applicable",
     }),
   ],
   attachments: [],
   revisions: [],
 };
 
-describe("timeline care-time analytics", () => {
+describe("timeline care-record analytics", () => {
+  it("removes legacy caregiver attribution from non-occurrence projections", () => {
+    const [item] = toTimelineItems({
+      entries: [
+        {
+          id: "legacy-missed",
+          workspaceId: workspace.id,
+          dailyLogId: "log-1",
+          taskKey: "school_dropoff",
+          taskLabel: "School drop-off",
+          childIds: ["child-a"],
+          caregiverIds: ["caregiver-a"],
+          status: "missed",
+          occurredAt: "2026-08-04T15:00:00.000Z",
+          recordedAt: "2026-08-04T15:30:00.000Z",
+          currentRevisionId: "revision-legacy-missed",
+          createdBy: "owner",
+          lateEntry: false,
+        },
+      ],
+      appointments: [],
+      incidents: [],
+      arrangements: [],
+      dailyLogs: [],
+      timezone: workspace.timezone,
+    });
+
+    expect(item).toMatchObject({
+      id: "legacy-missed",
+      status: "missed",
+      caregiverIds: [],
+    });
+  });
+
   it("offers only care record items that can represent time", () => {
     expect(getCareRecordItems(data.items)).toEqual([
       "Bedtime story",

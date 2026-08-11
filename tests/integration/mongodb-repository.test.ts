@@ -49,12 +49,16 @@ describe.skipIf(!configured)("MongoDB repository integration", () => {
     await repository.updateCareEntry(context, {
       recordId: entry.id,
       childIds: entry.childIds,
-      caregiverIds: entry.caregiverIds,
-      status: "partial",
+      caregiverIds: [],
+      status: "missed",
       occurredAt: "2026-07-14T12:15:00.000Z",
-      notes: "Updated details.",
+      notes: "The activity did not occur.",
     });
     const updatedBundle = await repository.getRecordBundle(context, "care_entry", entry.id);
+    expect(updatedBundle?.record).toMatchObject({
+      caregiverIds: [],
+      status: "missed",
+    });
     expect(
       updatedBundle?.record && "durationMinutes" in updatedBundle.record
         ? updatedBundle.record.durationMinutes
@@ -73,17 +77,18 @@ describe.skipIf(!configured)("MongoDB repository integration", () => {
     await repository.correctCareEntry(context, {
       recordId: entry.id,
       childIds: entry.childIds,
-      caregiverIds: entry.caregiverIds,
-      status: "partial",
+      caregiverIds: [],
+      status: "not_applicable",
       occurredAt: "2026-07-14T12:30:00.000Z",
-      notes: "Corrected details.",
+      notes: "The routine item did not apply.",
       reason: "Corrected the recorded outcome.",
     });
     const correctedBundle = await repository.getRecordBundle(context, "care_entry", entry.id);
     expect(correctedBundle?.record).toMatchObject({
-      status: "partial",
+      caregiverIds: [],
+      status: "not_applicable",
       occurredAt: "2026-07-14T12:30:00.000Z",
-      notes: "Corrected details.",
+      notes: "The routine item did not apply.",
     });
     expect(
       correctedBundle?.record && "durationMinutes" in correctedBundle.record
@@ -91,6 +96,10 @@ describe.skipIf(!configured)("MongoDB repository integration", () => {
         : undefined,
     ).toBeUndefined();
     expect(correctedBundle?.revisions).toHaveLength(2);
+    expect(correctedBundle?.revisions[1].payload).toMatchObject({
+      caregiverIds: [],
+      status: "not_applicable",
+    });
     expect(correctedBundle?.revisions[1].payload).not.toHaveProperty("durationMinutes");
     expect(correctedBundle?.revisions[1].payload).not.toHaveProperty("_id");
 

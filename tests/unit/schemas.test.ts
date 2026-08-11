@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   careEntryCorrectionSchema,
   careEntrySchema,
+  careEntryUpdateSchema,
   dailyLogNotesSchema,
   incidentSchema,
   reportSchema,
@@ -36,6 +37,92 @@ describe("domain validation", () => {
     });
     expect(result.success).toBe(false);
   });
+
+  const careEntrySchemas = [
+    {
+      name: "create",
+      schema: careEntrySchema,
+      base: {
+        localDate: "2026-07-14",
+        taskKey: "time_together",
+        taskLabel: "Time together",
+      },
+    },
+    {
+      name: "update",
+      schema: careEntryUpdateSchema,
+      base: { recordId: "care_1" },
+    },
+    {
+      name: "correction",
+      schema: careEntryCorrectionSchema,
+      base: { recordId: "care_1", reason: "Corrected the recorded status." },
+    },
+  ] as const;
+
+  it.each(careEntrySchemas)(
+    "$name requires caregivers only when care occurred",
+    ({ schema, base }) => {
+      const shared = {
+        childIds: ["child_1"],
+        occurredAt: "2026-07-14T18:00:00.000Z",
+      };
+
+      for (const status of ["completed", "partial"] as const) {
+        expect(
+          schema.safeParse({ ...base, ...shared, caregiverIds: [], status })
+            .success,
+        ).toBe(false);
+        expect(
+          schema.safeParse({
+            ...base,
+            ...shared,
+            caregiverIds: ["caregiver_1"],
+            status,
+          }).success,
+        ).toBe(true);
+      }
+
+      for (const status of ["missed", "not_applicable"] as const) {
+        expect(
+          schema.safeParse({ ...base, ...shared, caregiverIds: [], status })
+            .success,
+        ).toBe(true);
+        expect(
+          schema.safeParse({
+            ...base,
+            ...shared,
+            caregiverIds: ["caregiver_1"],
+            status,
+          }).success,
+        ).toBe(false);
+      }
+    },
+  );
+
+  it.each(careEntrySchemas)(
+    "$name rejects care-only details when care did not occur",
+    ({ schema, base }) => {
+      const shared = {
+        ...base,
+        childIds: ["child_1"],
+        caregiverIds: [],
+        status: "missed" as const,
+        occurredAt: "2026-07-14T18:00:00.000Z",
+      };
+
+      expect(schema.safeParse({ ...shared, durationMinutes: 30 }).success).toBe(
+        false,
+      );
+      expect(schema.safeParse({ ...shared, activityType: "Reading" }).success).toBe(
+        false,
+      );
+      expect(
+        schema.safeParse({ ...shared, notes: "The activity did not occur." })
+          .success,
+      ).toBe(true);
+    },
+  );
 
   it("allows an optional bounded note for a daily log", () => {
     expect(

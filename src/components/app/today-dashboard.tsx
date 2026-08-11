@@ -15,6 +15,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
+import { careStatusTimeLabel } from "@/lib/domain/care-entry-rules";
+import { CARE_STATUS_LABELS } from "@/lib/domain/constants";
 import { formatDay, formatTime, isValidLocalDate, shiftLocalDate } from "@/lib/domain/dates";
 import { fetchDashboard } from "@/lib/fetchers";
 import { sortRoutineItemsByTime } from "@/lib/domain/routines";
@@ -250,8 +252,8 @@ export function TodayDashboard({ date, today, initialData }: { date: string; tod
               <div>
                 <p className="text-sm text-primary-foreground/70">
                   {data.specialArrangement
-                    ? "Special-day plan progress"
-                    : "Routine progress"}
+                    ? "Special-day recording progress"
+                    : "Routine recording progress"}
                 </p>
                 <p className="mt-1 text-4xl font-semibold tracking-tight">{data.completion.percent}%</p>
               </div>
@@ -261,13 +263,13 @@ export function TodayDashboard({ date, today, initialData }: { date: string; tod
               value={data.completion.percent}
               aria-label={
                 data.specialArrangement
-                  ? "Special-day plan completion"
-                  : "Routine completion"
+                  ? "Special-day recording progress"
+                  : "Routine recording progress"
               }
               className="mt-6 bg-white/15 [&_[data-slot=progress-indicator]]:bg-white"
             />
             <p className="mt-3 text-sm text-primary-foreground/75">
-              {data.completion.completed} of {data.completion.total}{" "}
+              {data.completion.recorded} of {data.completion.total}{" "}
               {data.specialArrangement ? "planned tasks" : "routine items"} recorded
             </p>
           </CardContent>
@@ -306,16 +308,27 @@ export function TodayDashboard({ date, today, initialData }: { date: string; tod
         <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {sortRoutineItemsByTime(data.tasks).map((task) => {
             const recorded = Boolean(task.entry);
+            const completed = task.entry?.status === "completed";
             const trigger = (
               <button type="button" aria-label={`${recorded ? "Change" : "Record"} ${task.label}`} className="group flex w-full min-w-0 max-w-full items-center gap-4 rounded-2xl border bg-card p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-md">
-                <span className={`grid size-11 shrink-0 place-items-center rounded-2xl ${recorded ? "bg-primary text-primary-foreground" : "bg-secondary text-secondary-foreground"}`}>
+                <span className={`grid size-11 shrink-0 place-items-center rounded-2xl ${completed ? "bg-primary text-primary-foreground" : "bg-secondary text-secondary-foreground"}`}>
                   {recorded ? <CheckCircle2 className="size-5" /> : <Clock3 className="size-5" />}
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate font-medium">{task.label}</span>
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span className="truncate font-medium">{task.label}</span>
+                    {task.entry && (
+                      <Badge
+                        variant={task.entry.status === "missed" ? "destructive" : "secondary"}
+                        className="shrink-0"
+                      >
+                        {CARE_STATUS_LABELS[task.entry.status]}
+                      </Badge>
+                    )}
+                  </span>
                   <span className="mt-1 block truncate text-xs text-muted-foreground">
                     {recorded && task.entry
-                      ? `${childNames(task.entry.childIds, data)} · ${formatTime(task.entry.occurredAt, data.workspace.timezone)}`
+                      ? `${childNames(task.entry.childIds, data)} · ${careStatusTimeLabel(task.entry.status).toLowerCase()} ${formatTime(task.entry.occurredAt, data.workspace.timezone)}`
                       : `${childNames(task.childIds, data)} · around ${task.suggestedTime}`}
                   </span>
                 </span>

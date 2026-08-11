@@ -2,10 +2,10 @@
 
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TodayDashboard } from "@/components/app/today-dashboard";
-import { updateDailyLogNotesAction } from "@/app/actions";
+import { createCareEntryAction, updateDailyLogNotesAction } from "@/app/actions";
 import { createSeedState } from "@/lib/repository/seed";
 import type { DashboardData } from "@/lib/domain/types";
 
@@ -88,9 +88,7 @@ function renderDashboard(
       plannedCaregiverIds: arrangement.assignments[0].caregiverIds,
     }));
   }
-  const completedCount = tasks.filter(
-    (task) => task.entry?.status === "completed" || task.entry?.status === "not_applicable",
-  ).length;
+  const recordedCount = tasks.filter((task) => Boolean(task.entry)).length;
   const data: DashboardData = {
     workspace: state.workspace,
     member: state.members[0],
@@ -101,9 +99,9 @@ function renderDashboard(
     tasks,
     specialArrangement: arrangement,
     completion: {
-      completed: completedCount,
+      recorded: recordedCount,
       total: tasks.length,
-      percent: Math.round((completedCount / tasks.length) * 100),
+      percent: Math.round((recordedCount / tasks.length) * 100),
     },
     recentEntries: state.careEntries,
   };
@@ -125,6 +123,8 @@ function renderDashboard(
 }
 
 describe("TodayDashboard", () => {
+  beforeEach(() => vi.clearAllMocks());
+
   it("shows the day notes field below the record items and saves it", async () => {
     vi.mocked(updateDailyLogNotesAction).mockResolvedValueOnce({
       ok: true,
@@ -215,5 +215,72 @@ describe("TodayDashboard", () => {
     expect(screen.getByRole("checkbox", { name: /Parent A/ })).not.toBeChecked();
     expect(screen.getByRole("checkbox", { name: /Parent B/ })).toBeChecked();
     expect(screen.getByRole("button", { name: "Save record" })).toBeEnabled();
+  });
+
+  it.each([
+    ["Missed", "When was it expected?"],
+    ["Not applicable", "Routine time"],
+  ])(
+    "records %s without a caregiver or care-only details",
+    async (statusLabel, timeLabel) => {
+      vi.mocked(createCareEntryAction).mockResolvedValueOnce({
+        ok: true,
+        data: { id: "care_non_occurrence" },
+      });
+      const { tasks } = renderDashboard();
+      const task = tasks.find(
+        (item) => item.taskKey === "time_together" && !item.entry,
+      );
+      if (!task) throw new Error("Expected an unrecorded time-together task");
+
+      fireEvent.click(
+        screen.getByRole("button", { name: `Record ${task.label}` }),
+      );
+      fireEvent.click(screen.getByText("Parent A", { exact: true }));
+      fireEvent.change(screen.getByLabelText("Duration in minutes (optional)"), {
+        target: { value: "30" },
+      });
+      fireEvent.change(screen.getByLabelText("Activity type"), {
+        target: { value: "Reading" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: statusLabel }));
+
+      expect(screen.queryByText("Who provided the care?")).not.toBeInTheDocument();
+      expect(screen.queryByLabelText("Duration in minutes (optional)")).not.toBeInTheDocument();
+      expect(screen.queryByLabelText("Activity type")).not.toBeInTheDocument();
+      expect(screen.getByLabelText(timeLabel)).toBeInTheDocument();
+      expect(
+        screen.getByText(/No care provider is assigned because this status/),
+      ).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Save record" })).toBeEnabled();
+
+      fireEvent.click(screen.getByRole("button", { name: "Save record" }));
+
+      await waitFor(() =>
+        expect(createCareEntryAction).toHaveBeenCalledWith(
+          expect.objectContaining({
+            caregiverIds: [],
+            status:
+              statusLabel === "Missed" ? "missed" : "not_applicable",
+            durationMinutes: undefined,
+            activityType: undefined,
+          }),
+        ),
+      );
+    },
+  );
+
+  it("requires a newly selected caregiver after switching back to completed", () => {
+    const { tasks } = renderDashboard("open", true);
+    const task = tasks[0];
+
+    fireEvent.click(screen.getByRole("button", { name: `Record ${task.label}` }));
+    expect(screen.getByRole("checkbox", { name: /Parent B/ })).toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: "Missed" }));
+    fireEvent.click(screen.getByRole("button", { name: "Completed" }));
+
+    expect(screen.getByRole("checkbox", { name: /Parent A/ })).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: /Parent B/ })).not.toBeChecked();
+    expect(screen.getByRole("button", { name: "Save record" })).toBeDisabled();
   });
 });

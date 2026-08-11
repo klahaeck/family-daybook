@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { fileTypeFromBuffer } from "file-type";
 
 import { clerkConfigured } from "@/lib/auth/identity";
+import { careStatusRecordsProvidedCare } from "@/lib/domain/care-entry-rules";
 import { isValidLocalDate, localDateInTimezone } from "@/lib/domain/dates";
 import { id, sha256 } from "@/lib/domain/integrity";
 import {
@@ -64,6 +65,10 @@ function fail(error: unknown): ActionResult<never> {
     INVALID_ARRANGEMENT_TASK:
       "One of the planned tasks is no longer available.",
     INVALID_CARE_TASK: "Choose either a routine task or a special-arrangement task.",
+    INVALID_CAREGIVER_ATTRIBUTION:
+      "Completed and partial records require a care provider; missed and not applicable records cannot assign one.",
+    INVALID_NON_OCCURRENCE_DETAILS:
+      "Missed and not applicable records cannot include duration or activity details.",
   };
   return { ok: false, error: safe[message] ?? (process.env.NODE_ENV === "production" ? "The request could not be completed." : message) };
 }
@@ -181,14 +186,15 @@ export async function updateCareEntryNotesAction(
     const context = await getRequestContext();
     const bundle = await repository.getRecordBundle(context, "care_entry", parsed.data.recordId);
     if (!bundle || !("dailyLogId" in bundle.record)) throw new Error("NOT_FOUND");
+    const recordsProvidedCare = careStatusRecordsProvidedCare(bundle.record.status);
     const entry = await repository.updateCareEntry(context, {
       recordId: bundle.record.id,
       childIds: bundle.record.childIds,
-      caregiverIds: bundle.record.caregiverIds,
+      caregiverIds: recordsProvidedCare ? bundle.record.caregiverIds : [],
       status: bundle.record.status,
       occurredAt: bundle.record.occurredAt,
-      durationMinutes: bundle.record.durationMinutes,
-      activityType: bundle.record.activityType,
+      durationMinutes: recordsProvidedCare ? bundle.record.durationMinutes : undefined,
+      activityType: recordsProvidedCare ? bundle.record.activityType : undefined,
       notes: parsed.data.notes,
     });
     refreshRecords();

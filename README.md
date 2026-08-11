@@ -10,7 +10,7 @@ It is a recordkeeping tool, not legal advice, an emergency service, or a guarant
 - Date-range special arrangements with per-child responsibility and independent daily task snapshots
 - An isolated private workspace for every authenticated owner account
 - Previous-day navigation with historical templates, future-date prevention, and a next-calendar-day grace period before late-entry labeling
-- Caregiver attribution, actual occurrence time, duration, outcomes, and factual notes
+- Caregiver attribution when care occurred, explicit caregiver-free missed/not-applicable statuses, relevant times, optional duration, and factual notes
 - Scheduled appointments with responsibility and attendance outcomes
 - Neutral incident records for safety hazards and concerning interactions
 - Direct care-record edits while a day is open, then append-only corrections after finalization

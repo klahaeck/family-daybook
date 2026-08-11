@@ -13,9 +13,11 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { careStatusTimeLabel } from "@/lib/domain/care-entry-rules";
+import { CARE_STATUS_LABELS } from "@/lib/domain/constants";
 import { formatDateTime, formatDay, localDateInTimezone } from "@/lib/domain/dates";
 import { fetchTimeline } from "@/lib/fetchers";
-import type { RecordType, TimelineData } from "@/lib/domain/types";
+import type { CareStatus, RecordType, TimelineData } from "@/lib/domain/types";
 
 const kindInfo = {
   care: { label: "Care", icon: HeartHandshake, className: "bg-emerald-50 text-emerald-800" },
@@ -96,14 +98,18 @@ export function TimelineView({ initialData, canPurge = false }: { initialData: T
                 <CardContent className="p-4 sm:p-5">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div>
-                      <div className="flex flex-wrap items-center gap-2"><Badge variant="outline">{info.label}</Badge><Badge variant="secondary" className="capitalize">{item.status.replaceAll("_", " ")}</Badge>{item.lateEntry && <Badge variant="destructive">Late entry</Badge>}</div>
+                      <div className="flex flex-wrap items-center gap-2"><Badge variant="outline">{info.label}</Badge><Badge variant="secondary" className="capitalize">{item.kind === "care" ? CARE_STATUS_LABELS[item.status as CareStatus] : item.status.replaceAll("_", " ")}</Badge>{item.lateEntry && <Badge variant="destructive">Late entry</Badge>}</div>
                       <h2 className="mt-3 font-semibold">{item.title}</h2>
                       <p className="mt-1 text-xs text-muted-foreground">
                         {childNames}
                         {childNames && " · "}
                         {item.kind === "special_day" && item.localDate
                           ? `Planned for ${formatDay(item.localDate)}`
-                          : `Occurred ${formatDateTime(item.occurredAt, data.workspace.timezone)}`}
+                          : `${
+                              item.kind === "care"
+                                ? careStatusTimeLabel(item.status as CareStatus)
+                                : "Occurred"
+                            } ${formatDateTime(item.occurredAt, data.workspace.timezone)}`}
                       </p>
                       {item.description && <p className="mt-3 max-w-3xl whitespace-pre-wrap text-sm leading-6 text-foreground/85">{item.description}</p>}
                       {attachments.length > 0 && <div className="mt-3 flex flex-wrap gap-2">{attachments.map((attachment) => <a key={attachment.id} href={`/api/attachments/${attachment.id}`} className={buttonVariants({ variant: "outline", size: "sm" })}><Download className="size-3.5" />{attachment.originalName}</a>)}</div>}

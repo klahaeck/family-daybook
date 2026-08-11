@@ -8,6 +8,7 @@ import type {
   SpecialArrangementDay,
   TimelineItem,
 } from "@/lib/domain/types";
+import { careStatusRecordsProvidedCare } from "@/lib/domain/care-entry-rules";
 import type { WorkspaceSettingsInput } from "@/lib/domain/schemas";
 import { lateEntryFor, localDateTimeToUtc } from "@/lib/domain/dates";
 import { id } from "@/lib/domain/integrity";
@@ -73,7 +74,9 @@ export function toTimelineItems(input: {
           title: entry.taskLabel,
           description: entry.notes,
           childIds: entry.childIds,
-          caregiverIds: entry.caregiverIds,
+          caregiverIds: careStatusRecordsProvidedCare(entry.status)
+            ? entry.caregiverIds
+            : [],
           status: entry.status,
           lateEntry: entry.lateEntry,
           dailyLogStatus: input.dailyLogs.find((log) => log.id === entry.dailyLogId)?.status,

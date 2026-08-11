@@ -18,8 +18,9 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { careStatusRecordsProvidedCare } from "@/lib/domain/care-entry-rules";
 import { localDateTimeToUtc, toDateTimeLocalInTimezone } from "@/lib/domain/dates";
-import type { Caregiver, Child, TodayTask } from "@/lib/domain/types";
+import type { Caregiver, CareStatus, Child, TodayTask } from "@/lib/domain/types";
 import { AttachmentPicker, FieldError, MultiCheck, uploadFiles } from "./form-parts";
 
 export function CareEntryDialog({
@@ -44,17 +45,21 @@ export function CareEntryDialog({
   const queryClient = useQueryClient();
   const editing = Boolean(task?.entry);
   const correcting = editing && finalized;
+  const initialStatus = task?.entry?.status ?? "completed";
   const [open, setOpen] = useState(false);
   const [selectedChildren, setSelectedChildren] = useState<string[]>(task?.entry?.childIds ?? task?.childIds ?? childOptions.map((child) => child.id));
   const [selectedCaregivers, setSelectedCaregivers] = useState<string[]>(
-    task?.entry?.caregiverIds ??
-      (task
-        ? task.plannedCaregiverIds
-        : [caregivers.find((item) => item.isOwner)?.id ?? caregivers[0]?.id].filter(Boolean)),
+    careStatusRecordsProvidedCare(initialStatus)
+      ? task?.entry?.caregiverIds ??
+          (task
+            ? task.plannedCaregiverIds
+            : [caregivers.find((item) => item.isOwner)?.id ?? caregivers[0]?.id].filter(Boolean))
+      : [],
   );
-  const [status, setStatus] = useState(task?.entry?.status ?? "completed");
+  const [status, setStatus] = useState<CareStatus>(initialStatus);
   const [files, setFiles] = useState<File[]>([]);
   const [serverError, setServerError] = useState<string>();
+  const recordsProvidedCare = careStatusRecordsProvidedCare(status);
 
   const defaultTime = task?.entry
     ? toDateTimeLocalInTimezone(new Date(task.entry.occurredAt), timezone)
@@ -67,13 +72,15 @@ export function CareEntryDialog({
       setServerError(undefined);
       const details = {
         childIds: selectedChildren,
-        caregiverIds: selectedCaregivers,
+        caregiverIds: recordsProvidedCare ? selectedCaregivers : [],
         status,
         occurredAt: localDateTimeToUtc(formData.get("occurredAt")!.toString(), timezone),
-        durationMinutes: formData.get("durationMinutes")?.toString()
+        durationMinutes: recordsProvidedCare && formData.get("durationMinutes")?.toString()
           ? Number(formData.get("durationMinutes"))
           : undefined,
-        activityType: formData.get("activityType")?.toString() || undefined,
+        activityType: recordsProvidedCare
+          ? formData.get("activityType")?.toString() || undefined
+          : undefined,
         notes: formData.get("notes")?.toString() || undefined,
       };
       const result = task?.entry
@@ -128,7 +135,7 @@ export function CareEntryDialog({
                 ? correcting
                   ? "Save a correction while preserving the prior version and its original entry time."
                   : "Update this record directly while the day is still open."
-                : "Record what occurred. The app adds a separate, server-controlled entry time."}
+                : "Record the item’s status and any factual details. The app adds a separate, server-controlled entry time."}
             </DialogDescription>
           </DialogHeader>
           <div className="my-5 space-y-5">
@@ -139,27 +146,26 @@ export function CareEntryDialog({
               </div>
             )}
             <MultiCheck label="Children" values={childOptions} selected={selectedChildren} onChange={setSelectedChildren} />
-            <MultiCheck
-              label="Who provided the care?"
-              values={caregivers.map((caregiver) => ({ ...caregiver, secondary: caregiver.relationship }))}
-              selected={selectedCaregivers}
-              onChange={setSelectedCaregivers}
-            />
             <fieldset className="space-y-2">
-              <legend className="text-sm font-medium">Outcome</legend>
+              <legend className="text-sm font-medium">Status</legend>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                 {([
                   ["completed", "Completed"],
                   ["partial", "Partial"],
                   ["missed", "Missed"],
-                  ["not_applicable", "N/A"],
+                  ["not_applicable", "Not applicable"],
                 ] as const).map(([value, label]) => (
                   <Button
                     key={value}
                     type="button"
                     size="sm"
                     variant={status === value ? "default" : "outline"}
-                    onClick={() => setStatus(value)}
+                    onClick={() => {
+                      setStatus(value);
+                      if (!careStatusRecordsProvidedCare(value)) {
+                        setSelectedCaregivers([]);
+                      }
+                    }}
                   >
                     {status === value && <Check className="size-3" />}
                     {label}
@@ -167,19 +173,42 @@ export function CareEntryDialog({
                 ))}
               </div>
             </fieldset>
+            {recordsProvidedCare ? (
+              <MultiCheck
+                label="Who provided the care?"
+                values={caregivers.map((caregiver) => ({ ...caregiver, secondary: caregiver.relationship }))}
+                selected={selectedCaregivers}
+                onChange={setSelectedCaregivers}
+              />
+            ) : (
+              <p className="rounded-xl bg-muted/60 px-4 py-3 text-sm text-muted-foreground">
+                No care provider is assigned because this status records that the care did not occur.
+              </p>
+            )}
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="occurredAt">When did it occur?</Label>
+                <Label htmlFor="occurredAt">
+                  {status === "missed"
+                    ? "When was it expected?"
+                    : status === "not_applicable"
+                      ? "Routine time"
+                      : "When did it occur?"}
+                </Label>
                 <Input id="occurredAt" name="occurredAt" type="datetime-local" required defaultValue={defaultTime} />
+                {status === "not_applicable" && (
+                  <p className="text-xs text-muted-foreground">
+                    This places the routine item on the selected day; it does not mean care occurred.
+                  </p>
+                )}
               </div>
-              {(task?.taskKey === "time_together" || !task) && (
+              {recordsProvidedCare && (task?.taskKey === "time_together" || !task) && (
                 <div className="space-y-2">
                   <Label htmlFor="durationMinutes">Duration in minutes (optional)</Label>
                   <Input id="durationMinutes" name="durationMinutes" type="number" min={1} max={1440} defaultValue={task?.entry?.durationMinutes} placeholder="30" />
                 </div>
               )}
             </div>
-            {task?.taskKey === "time_together" && (
+            {recordsProvidedCare && task?.taskKey === "time_together" && (
               <div className="space-y-2">
                 <Label htmlFor="activityType">Activity type</Label>
                 <Input id="activityType" name="activityType" maxLength={100} defaultValue={task?.entry?.activityType} placeholder="Reading, homework, playing outside…" />
@@ -187,7 +216,18 @@ export function CareEntryDialog({
             )}
             <div className="space-y-2">
               <Label htmlFor="notes">Factual notes (optional)</Label>
-              <Textarea id="notes" name="notes" maxLength={2000} rows={4} defaultValue={task?.entry?.notes} placeholder="Record observable details without conclusions or inferred motives." />
+              <Textarea
+                id="notes"
+                name="notes"
+                maxLength={2000}
+                rows={4}
+                defaultValue={task?.entry?.notes}
+                placeholder={
+                  recordsProvidedCare
+                    ? "Record observable details without conclusions or inferred motives."
+                    : "Optionally record the factual reason this item was missed or did not apply."
+                }
+              />
             </div>
             {correcting && (
               <div className="space-y-2">
@@ -199,7 +239,14 @@ export function CareEntryDialog({
             {serverError && <FieldError errors={[serverError]} />}
           </div>
           <DialogFooter>
-            <Button type="submit" disabled={mutation.isPending || selectedChildren.length === 0 || selectedCaregivers.length === 0}>
+            <Button
+              type="submit"
+              disabled={
+                mutation.isPending ||
+                selectedChildren.length === 0 ||
+                (recordsProvidedCare && selectedCaregivers.length === 0)
+              }
+            >
               {mutation.isPending ? <Clock3 className="size-4 animate-spin" /> : <Check className="size-4" />}
               {mutation.isPending ? "Saving…" : correcting ? "Save correction" : editing ? "Save changes" : "Save record"}
             </Button>

@@ -1,5 +1,6 @@
 import "server-only";
 
+import { assertValidCareEntryDetails } from "@/lib/domain/care-entry-rules";
 import {
   lateEntryFor,
   localDateInTimezone,
@@ -252,9 +253,7 @@ export class MemoryParentingRepository implements ParentingRepository {
             plannedCaregiverIds: [],
             entry: dayEntries.find((entry) => entry.templateItemId === item.id),
           }));
-    const completed = tasks.filter(
-      (task) => task.entry?.status === "completed" || task.entry?.status === "not_applicable",
-    ).length;
+    const recorded = tasks.filter((task) => Boolean(task.entry)).length;
 
     return {
       workspace: context.workspace,
@@ -266,9 +265,9 @@ export class MemoryParentingRepository implements ParentingRepository {
       tasks,
       specialArrangement,
       completion: {
-        completed,
+        recorded,
         total: tasks.length,
-        percent: tasks.length ? Math.round((completed / tasks.length) * 100) : 0,
+        percent: tasks.length ? Math.round((recorded / tasks.length) * 100) : 0,
       },
       recentEntries: dayEntries
         .sort(
@@ -498,8 +497,12 @@ export class MemoryParentingRepository implements ParentingRepository {
           taskLabel: arrangementTask.label,
         }
       : input;
+    assertValidCareEntryDetails(normalizedInput);
     const recordId = id("care");
     const payload: Record<string, unknown> = { ...normalizedInput };
+    for (const field of ["durationMinutes", "activityType", "notes"] as const) {
+      if (normalizedInput[field] === undefined) delete payload[field];
+    }
     const revision = this.createRevision(
       data,
       "care_entry",
@@ -532,6 +535,9 @@ export class MemoryParentingRepository implements ParentingRepository {
         context.workspace.timezone,
       ),
     };
+    for (const field of ["durationMinutes", "activityType", "notes"] as const) {
+      if (entry[field] === undefined) delete entry[field];
+    }
     data.careEntries.push(entry);
     await this.audit(context, "created", "care_entry", entry.id);
     return entry;
@@ -539,6 +545,7 @@ export class MemoryParentingRepository implements ParentingRepository {
 
   async updateCareEntry(context: RequestContext, input: CareEntryUpdateInput) {
     requireOwner(context.member.role);
+    assertValidCareEntryDetails(input);
     const data = state();
     const entry = data.careEntries.find((item) => item.id === input.recordId);
     if (!entry) throw new Error("NOT_FOUND");
@@ -598,6 +605,7 @@ export class MemoryParentingRepository implements ParentingRepository {
 
   async correctCareEntry(context: RequestContext, input: CareEntryCorrectionInput) {
     requireOwner(context.member.role);
+    assertValidCareEntryDetails(input);
     const data = state();
     const entry = data.careEntries.find((item) => item.id === input.recordId);
     if (!entry) throw new Error("NOT_FOUND");

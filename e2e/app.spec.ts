@@ -109,6 +109,71 @@ test("shows the daily care workflow", async ({ page }) => {
   await expect(page.getByLabel("Next day")).toBeDisabled();
 });
 
+test("records missed and not-applicable items without caregivers", async ({ page, request }, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "chromium",
+    "Run the stateful status flow once on desktop Chromium.",
+  );
+
+  await page.goto("/app");
+  await page.getByRole("button", { name: "Record Naptime" }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("button", { name: "Missed" }).click();
+
+  await expect(dialog.getByText("Who provided the care?", { exact: true })).toHaveCount(0);
+  await expect(dialog.getByLabel("When was it expected?")).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Save record" })).toBeEnabled();
+  const accessibility = await new AxeBuilder({ page })
+    .include('[role="dialog"]')
+    .disableRules(["color-contrast"])
+    .analyze();
+  expect(
+    accessibility.violations.filter(
+      (violation) =>
+        violation.impact === "critical" || violation.impact === "serious",
+    ),
+  ).toEqual([]);
+  await dialog.getByRole("button", { name: "Save record" }).click();
+
+  const missedCard = page.getByRole("button", { name: "Change Naptime" });
+  await expect(missedCard.getByText("Missed", { exact: true })).toBeVisible();
+  let timeline = (await (await request.get("/api/timeline")).json()) as {
+    items: Array<{ title: string; status: string; caregiverIds: string[] }>;
+  };
+  expect(
+    timeline.items.find(
+      (item) => item.title === "Naptime" && item.status === "missed",
+    )?.caregiverIds,
+  ).toEqual([]);
+
+  await missedCard.click();
+  await page.getByRole("dialog").getByRole("button", { name: "Not applicable" }).click();
+  await expect(page.getByRole("dialog").getByLabel("Routine time")).toBeVisible();
+  await page.getByRole("dialog").getByRole("button", { name: "Save changes" }).click();
+  await expect(
+    page
+      .getByRole("button", { name: "Change Naptime" })
+      .getByText("Not applicable", { exact: true }),
+  ).toBeVisible();
+
+  timeline = (await (await request.get("/api/timeline")).json()) as {
+    items: Array<{ title: string; status: string; caregiverIds: string[] }>;
+  };
+  expect(
+    timeline.items.find(
+      (item) => item.title === "Naptime" && item.status === "not_applicable",
+    )?.caregiverIds,
+  ).toEqual([]);
+
+  await page.goto("/app/timeline");
+  await page.getByLabel("Search timeline").fill("Naptime");
+  const timelineCard = page.locator('[data-slot="card"]').filter({ hasText: "Naptime" });
+  await expect(timelineCard.getByText("Not applicable", { exact: true })).toBeVisible();
+  await expect(timelineCard.getByText(/Routine time/)).toBeVisible();
+  await page.getByLabel("Filter by caregiver").selectOption({ label: "Parent A" });
+  await expect(page.getByText("No records match these filters.", { exact: true })).toBeVisible();
+});
+
 test("timeline record charts show records and respond to toggles", async ({ page }, testInfo) => {
   test.skip(
     testInfo.project.name !== "chromium",

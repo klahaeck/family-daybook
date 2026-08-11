@@ -146,6 +146,181 @@ describe("memory repository integration", () => {
     ).rejects.toThrow("DAY_FINALIZED");
   });
 
+  it("stores non-occurrence records without care-provider attribution", async () => {
+    const repository = new MemoryParentingRepository();
+    const context = await repository.resolveContext(identity);
+    const dashboard = await repository.getDashboard(context, "2026-07-14");
+
+    for (const [index, status] of (["missed", "not_applicable"] as const).entries()) {
+      const entry = await repository.createCareEntry(context, {
+        localDate: "2026-07-14",
+        taskKey: "custom",
+        taskLabel: status === "missed" ? "School drop-off" : "Pack school lunch",
+        childIds: [dashboard.children[0].id],
+        caregiverIds: [],
+        status,
+        occurredAt: `2026-07-14T${12 + index}:00:00.000Z`,
+        notes: status === "missed" ? "The drop-off did not occur." : "School provided lunch.",
+      });
+      const bundle = await repository.getRecordBundle(context, "care_entry", entry.id);
+
+      expect(bundle?.record).toMatchObject({ status, caregiverIds: [] });
+      expect(bundle?.revisions[0].payload).toMatchObject({
+        status,
+        caregiverIds: [],
+      });
+    }
+  });
+
+  it("counts every saved routine disposition as recorded", async () => {
+    const repository = new MemoryParentingRepository();
+    const context = await repository.resolveContext(identity);
+    const before = await repository.getDashboard(context, "2026-07-14");
+    const task = before.tasks.find((item) => !item.entry);
+    if (!task?.templateItemId) throw new Error("Expected an unrecorded routine item");
+
+    await repository.createCareEntry(context, {
+      localDate: "2026-07-14",
+      templateItemId: task.templateItemId,
+      taskKey: task.taskKey,
+      taskLabel: task.label,
+      childIds: task.childIds,
+      caregiverIds: [],
+      status: "missed",
+      occurredAt: "2026-07-14T12:00:00.000Z",
+    });
+    const after = await repository.getDashboard(context, "2026-07-14");
+
+    expect(after.completion.recorded).toBe(before.completion.recorded + 1);
+    expect(after.completion.total).toBe(before.completion.total);
+  });
+
+  it("rejects contradictory care-provider and non-occurrence details", async () => {
+    const repository = new MemoryParentingRepository();
+    const context = await repository.resolveContext(identity);
+    const dashboard = await repository.getDashboard(context, "2026-07-14");
+    const shared = {
+      localDate: "2026-07-14",
+      taskKey: "custom" as const,
+      taskLabel: "School drop-off",
+      childIds: [dashboard.children[0].id],
+      occurredAt: "2026-07-14T12:00:00.000Z",
+    };
+
+    await expect(
+      repository.createCareEntry(context, {
+        ...shared,
+        caregiverIds: [],
+        status: "completed",
+      }),
+    ).rejects.toThrow("INVALID_CAREGIVER_ATTRIBUTION");
+    await expect(
+      repository.createCareEntry(context, {
+        ...shared,
+        caregiverIds: [dashboard.caregivers[0].id],
+        status: "missed",
+      }),
+    ).rejects.toThrow("INVALID_CAREGIVER_ATTRIBUTION");
+    await expect(
+      repository.createCareEntry(context, {
+        ...shared,
+        caregiverIds: [],
+        status: "not_applicable",
+        durationMinutes: 30,
+      }),
+    ).rejects.toThrow("INVALID_NON_OCCURRENCE_DETAILS");
+  });
+
+  it("clears care-only details when an open record becomes missed", async () => {
+    const repository = new MemoryParentingRepository();
+    const context = await repository.resolveContext(identity);
+    const dashboard = await repository.getDashboard(context, "2026-07-14");
+    const entry = await repository.createCareEntry(context, {
+      localDate: "2026-07-14",
+      taskKey: "time_together",
+      taskLabel: "Time together",
+      childIds: [dashboard.children[0].id],
+      caregiverIds: [dashboard.caregivers[0].id],
+      status: "completed",
+      occurredAt: "2026-07-14T12:00:00.000Z",
+      durationMinutes: 30,
+      activityType: "Reading",
+    });
+
+    const updated = await repository.updateCareEntry(context, {
+      recordId: entry.id,
+      childIds: entry.childIds,
+      caregiverIds: [],
+      status: "missed",
+      occurredAt: "2026-07-14T12:00:00.000Z",
+      notes: "The activity did not occur.",
+    });
+    const bundle = await repository.getRecordBundle(context, "care_entry", entry.id);
+
+    expect(updated).toMatchObject({
+      caregiverIds: [],
+      status: "missed",
+      currentRevisionId: entry.currentRevisionId,
+    });
+    expect(updated.durationMinutes).toBeUndefined();
+    expect(updated.activityType).toBeUndefined();
+    expect(bundle?.revisions).toHaveLength(1);
+    expect(bundle?.revisions[0].payload).toMatchObject({
+      caregiverIds: [],
+      status: "missed",
+    });
+    expect(bundle?.revisions[0].payload).not.toHaveProperty("durationMinutes");
+    expect(bundle?.revisions[0].payload).not.toHaveProperty("activityType");
+  });
+
+  it("appends a caregiver-free correction when finalized care becomes not applicable", async () => {
+    const repository = new MemoryParentingRepository();
+    const context = await repository.resolveContext(identity);
+    const dashboard = await repository.getDashboard(context, "2026-07-14");
+    const caregiverId = dashboard.caregivers[0].id;
+    const entry = await repository.createCareEntry(context, {
+      localDate: "2026-07-14",
+      taskKey: "time_together",
+      taskLabel: "Time together",
+      childIds: [dashboard.children[0].id],
+      caregiverIds: [caregiverId],
+      status: "completed",
+      occurredAt: "2026-07-14T12:00:00.000Z",
+      durationMinutes: 30,
+      activityType: "Reading",
+    });
+    await repository.finalizeDailyLog(context, "2026-07-14");
+
+    await repository.correctCareEntry(context, {
+      recordId: entry.id,
+      childIds: entry.childIds,
+      caregiverIds: [],
+      status: "not_applicable",
+      occurredAt: entry.occurredAt,
+      notes: "The routine item did not apply that day.",
+      reason: "Corrected the status after reviewing the schedule.",
+    });
+    const bundle = await repository.getRecordBundle(context, "care_entry", entry.id);
+
+    expect(bundle?.record).toMatchObject({
+      caregiverIds: [],
+      status: "not_applicable",
+    });
+    expect(bundle?.revisions).toHaveLength(2);
+    expect(bundle?.revisions[0].payload).toMatchObject({
+      caregiverIds: [caregiverId],
+      status: "completed",
+    });
+    expect(bundle?.revisions[1].payload).toMatchObject({
+      caregiverIds: [],
+      status: "not_applicable",
+    });
+    expect(bundle?.revisions[1].previousRevisionId).toBe(bundle?.revisions[0].id);
+    expect(bundle?.revisions[1].hash).not.toBe(bundle?.revisions[0].hash);
+    expect(bundle?.revisions[1].payload).not.toHaveProperty("durationMinutes");
+    expect(bundle?.revisions[1].payload).not.toHaveProperty("activityType");
+  });
+
   it("corrects all editable care-entry details without replacing the prior revision", async () => {
     const repository = new MemoryParentingRepository();
     const context = await repository.resolveContext(identity);

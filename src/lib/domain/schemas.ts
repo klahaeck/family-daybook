@@ -1,7 +1,61 @@
 import { z } from "zod";
 
+import { careStatusRecordsProvidedCare } from "./care-entry-rules";
+import type { CareStatus } from "./types";
+
 const idArray = z.array(z.string().min(1)).min(1, "Choose at least one option");
+const caregiverIdArray = z.array(z.string().min(1));
 const isoDateTime = z.string().datetime({ local: true }).or(z.string().datetime());
+const careStatusSchema = z.enum(["completed", "partial", "missed", "not_applicable"]);
+const careEntryDetailFields = {
+  childIds: idArray,
+  caregiverIds: caregiverIdArray,
+  status: careStatusSchema,
+  occurredAt: isoDateTime,
+  durationMinutes: z.coerce.number().int().min(1).max(1440).optional(),
+  activityType: z.string().trim().max(100).optional(),
+  notes: z.string().trim().max(2000).optional(),
+};
+
+function refineCareEntryDetails(
+  value: {
+    status: CareStatus;
+    caregiverIds: string[];
+    durationMinutes?: number;
+    activityType?: string;
+  },
+  context: z.RefinementCtx,
+) {
+  const recordsProvidedCare = careStatusRecordsProvidedCare(value.status);
+  if (recordsProvidedCare && value.caregiverIds.length === 0) {
+    context.addIssue({
+      code: "custom",
+      path: ["caregiverIds"],
+      message: "Choose who provided the care.",
+    });
+  }
+  if (!recordsProvidedCare && value.caregiverIds.length > 0) {
+    context.addIssue({
+      code: "custom",
+      path: ["caregiverIds"],
+      message: "Missed and not applicable records cannot assign a care provider.",
+    });
+  }
+  if (!recordsProvidedCare && value.durationMinutes !== undefined) {
+    context.addIssue({
+      code: "custom",
+      path: ["durationMinutes"],
+      message: "Duration can only be recorded when care occurred.",
+    });
+  }
+  if (!recordsProvidedCare && value.activityType !== undefined) {
+    context.addIssue({
+      code: "custom",
+      path: ["activityType"],
+      message: "Activity type can only be recorded when care occurred.",
+    });
+  }
+}
 
 export const careEntrySchema = z
   .object({
@@ -25,28 +79,24 @@ export const careEntrySchema = z
       "custom",
     ]),
     taskLabel: z.string().trim().min(2).max(100),
-    childIds: idArray,
-    caregiverIds: idArray,
-    status: z.enum(["completed", "partial", "missed", "not_applicable"]),
-    occurredAt: isoDateTime,
-    durationMinutes: z.coerce.number().int().min(1).max(1440).optional(),
-    activityType: z.string().trim().max(100).optional(),
-    notes: z.string().trim().max(2000).optional(),
-  });
+    ...careEntryDetailFields,
+  })
+  .superRefine(refineCareEntryDetails);
 
-export const careEntryCorrectionSchema = z.object({
-  recordId: z.string().min(1),
-  childIds: idArray,
-  caregiverIds: idArray,
-  status: z.enum(["completed", "partial", "missed", "not_applicable"]),
-  occurredAt: isoDateTime,
-  durationMinutes: z.coerce.number().int().min(1).max(1440).optional(),
-  activityType: z.string().trim().max(100).optional(),
-  notes: z.string().trim().max(2000).optional(),
-  reason: z.string().trim().min(5).max(500),
-});
+export const careEntryCorrectionSchema = z
+  .object({
+    recordId: z.string().min(1),
+    ...careEntryDetailFields,
+    reason: z.string().trim().min(5).max(500),
+  })
+  .superRefine(refineCareEntryDetails);
 
-export const careEntryUpdateSchema = careEntryCorrectionSchema.omit({ reason: true });
+export const careEntryUpdateSchema = z
+  .object({
+    recordId: z.string().min(1),
+    ...careEntryDetailFields,
+  })
+  .superRefine(refineCareEntryDetails);
 
 export const careEntryTextUpdateSchema = z.object({
   recordId: z.string().min(1),

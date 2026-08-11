@@ -1,7 +1,6 @@
 import { localDateInTimezone } from "@/lib/domain/dates";
-import type { TimelineData, TimelineItem } from "@/lib/domain/types";
-
-const includedCareStatuses = new Set(["completed", "partial"]);
+import { careStatusRecordsProvidedCare } from "@/lib/domain/care-entry-rules";
+import type { CareStatus, TimelineData, TimelineItem } from "@/lib/domain/types";
 
 export interface CareRecordFilters {
   recordItems: string[];
@@ -35,7 +34,8 @@ export function getCareRecordItems(items: TimelineItem[]): string[] {
       items
         .filter(
           (item) =>
-            item.kind === "care" && includedCareStatuses.has(item.status),
+            item.kind === "care" &&
+            careStatusRecordsProvidedCare(item.status as CareStatus),
         )
         .map((item) => item.title),
     ),
@@ -53,7 +53,7 @@ export function summarizeCareRecords(
   const records = data.items.filter((item) => {
     if (
       item.kind !== "care" ||
-      !includedCareStatuses.has(item.status) ||
+      !careStatusRecordsProvidedCare(item.status as CareStatus) ||
       !selectedRecordItems.has(item.title) ||
       !overlaps(item.childIds, selectedChildren) ||
       !overlaps(item.caregiverIds, selectedCaregivers)

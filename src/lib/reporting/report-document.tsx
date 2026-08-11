@@ -7,6 +7,7 @@ import {
 } from "@react-pdf/renderer";
 
 import { CARE_STATUS_LABELS, INCIDENT_LABELS, RECORD_DISCLAIMER } from "@/lib/domain/constants";
+import { careStatusRecordsProvidedCare, careStatusTimeLabel } from "@/lib/domain/care-entry-rules";
 import { formatDateTime } from "@/lib/domain/dates";
 import type { ReportSource } from "@/lib/repository/repository";
 
@@ -66,7 +67,7 @@ export function ReportDocument({ source }: { source: ReportSource }) {
         <View style={styles.summary}>
           <View style={styles.summaryCard}>
             <Text style={styles.summaryNumber}>{source.entries.length}</Text>
-            <Text>Care records</Text>
+            <Text>Routine item records</Text>
           </View>
           <View style={styles.summaryCard}>
             <Text style={styles.summaryNumber}>{careCompleted}</Text>
@@ -94,8 +95,8 @@ export function ReportDocument({ source }: { source: ReportSource }) {
               <Text>
                 These arrangements describe saved plans and responsibility
                 assignments. They do not establish that the planned care occurred;
-                caregiving records below describe what was entered as having
-                occurred.
+                routine item records below distinguish care recorded as completed
+                or partial from items marked missed or not applicable.
               </Text>
             </View>
             {source.arrangements.map((arrangement) => (
@@ -127,16 +128,19 @@ export function ReportDocument({ source }: { source: ReportSource }) {
 
         {source.entries.length > 0 && (
           <View>
-            <Text style={styles.heading}>Caregiving records</Text>
+            <Text style={styles.heading}>Routine item records</Text>
             {source.entries.map((entry) => (
               <View key={entry.id} style={styles.row} wrap={false}>
                 <Text style={styles.rowTitle}>{entry.taskLabel}</Text>
                 <Text style={styles.meta}>
-                  Occurred {formatDateTime(entry.occurredAt, timezone)} · Entered {formatDateTime(entry.recordedAt, timezone)}
+                  {careStatusTimeLabel(entry.status)} {formatDateTime(entry.occurredAt, timezone)} · Entered {formatDateTime(entry.recordedAt, timezone)}
                 </Text>
                 <Text>
-                  Children: {names(entry.childIds, source.children)} · Caregiver: {names(entry.caregiverIds, source.caregivers)} · Status: {CARE_STATUS_LABELS[entry.status]}
+                  Children: {names(entry.childIds, source.children)} · Status: {CARE_STATUS_LABELS[entry.status]}
                 </Text>
+                {careStatusRecordsProvidedCare(entry.status) && (
+                  <Text>Caregiver: {names(entry.caregiverIds, source.caregivers)}</Text>
+                )}
                 {entry.durationMinutes && <Text>Duration: {entry.durationMinutes} minutes</Text>}
                 {entry.notes && <Text>Notes: {entry.notes}</Text>}
                 {entry.lateEntry && <Text>Late entry: recorded after the following calendar day.</Text>}
