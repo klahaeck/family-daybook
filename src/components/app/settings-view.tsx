@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Check, LockKeyhole, MailPlus, Plus, ShieldCheck, Trash2, UserRoundX } from "lucide-react";
+import { Check, LockKeyhole, MailPlus, Palette, Plus, ShieldCheck, Trash2, UserRoundX } from "lucide-react";
 
 import { inviteReviewerAction, revokeReviewerAction, updateSettingsAction } from "@/app/actions";
 import { Badge } from "@/components/ui/badge";
@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { ThemePicker } from "@/components/theme-switcher";
 import {
   CAREGIVER_RELATIONSHIPS,
   EVERY_DAY,
@@ -339,6 +340,20 @@ export function SettingsView({ data, timezones }: { data: SettingsData; timezone
       </Card>
 
       <div className="space-y-5">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Palette className="size-5 text-primary" />
+              Appearance
+            </CardTitle>
+            <CardDescription>
+              Use a light or dark palette, or follow this device. Your choice is saved in this browser.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ThemePicker />
+          </CardContent>
+        </Card>
         <Card>
           <CardHeader><CardTitle>Reviewers</CardTitle><CardDescription>Reviewers can see finalized records and download reports but cannot change data or settings.</CardDescription></CardHeader>
           <CardContent className="space-y-4">

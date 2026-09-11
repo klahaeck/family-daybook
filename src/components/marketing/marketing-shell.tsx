@@ -3,6 +3,7 @@ import { SignOutButton } from "@clerk/nextjs";
 
 import { BrandLogo } from "@/components/app/brand-logo";
 import { DaybookLink } from "@/components/marketing/daybook-link";
+import { ThemeToggle } from "@/components/theme-switcher";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -49,7 +50,7 @@ export function MarketingShell({
       <header className="sticky top-0 z-50 border-b border-border/70 bg-background/90 backdrop-blur-xl">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6 lg:h-20 lg:px-8">
           <Link href="/" aria-label="Family Daybook home" className="shrink-0">
-            <BrandLogo decorative className="w-40 sm:w-48" />
+            <BrandLogo decorative className="w-32 sm:w-48" />
           </Link>
 
           <nav className="hidden items-center gap-7 lg:flex" aria-label="Marketing navigation">
@@ -65,11 +66,16 @@ export function MarketingShell({
           </nav>
 
           <div className="flex items-center gap-2">
+            <ThemeToggle className="size-10" />
             <SessionControl
               signedIn={signedIn}
               className={cn(buttonVariants({ variant: "ghost", size: "lg" }), "hidden sm:inline-flex")}
             />
-            <DaybookLink signedIn={signedIn} className="h-10 px-4 shadow-sm sm:px-5" />
+            <DaybookLink
+              signedIn={signedIn}
+              compactLabel={signedIn ? "Open" : "Start"}
+              className="h-10 px-4 shadow-sm sm:px-5"
+            />
           </div>
         </div>
 

@@ -51,7 +51,7 @@ export default async function PricingPage({
   return (
     <MarketingShell signedIn={signedIn}>
       <main>
-        <header className="border-b bg-[linear-gradient(180deg,#f4f8f5_0%,var(--background)_100%)] px-4 py-16 text-center sm:px-6 sm:py-20 lg:px-8">
+        <header className="border-b bg-[linear-gradient(180deg,var(--hero-start)_0%,var(--background)_100%)] px-4 py-16 text-center sm:px-6 sm:py-20 lg:px-8">
           <div className="mx-auto max-w-3xl">
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-primary">
               Simple account billing

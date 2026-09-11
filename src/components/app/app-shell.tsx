@@ -22,6 +22,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { BrandLogo } from "@/components/app/brand-logo";
+import { ThemeToggle } from "@/components/theme-switcher";
 import { cn } from "@/lib/utils";
 import type { Member, Workspace } from "@/lib/domain/types";
 
@@ -130,6 +131,7 @@ export function AppShell({
               <p className="truncate text-sm font-medium">{member.displayName}</p>
               <p className="truncate text-xs capitalize text-muted-foreground">{member.role}</p>
             </div>
+            <ThemeToggle className="ml-auto size-8" />
           </div>
           {process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY && (
             <div className="mt-3 space-y-1">
@@ -162,66 +164,69 @@ export function AppShell({
             <Link href="/app" aria-label="Family Daybook app home">
               <BrandLogo decorative className="w-[164px]" />
             </Link>
-            <Sheet open={mobileNavigationOpen} onOpenChange={setMobileNavigationOpen}>
-              <SheetTrigger render={<Button variant="outline" size="icon" aria-label="Open navigation" />}>
-                <Menu className="size-4" />
-              </SheetTrigger>
-              <SheetContent side="right" className="w-72 p-5">
-                <SheetTitle className="mb-6">Navigation</SheetTitle>
-                <Navigation role={member.role} onNavigate={() => setMobileNavigationOpen(false)} />
-                <div className="mt-auto border-t pt-4">
-                  <p className="mb-2 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                    Account
-                  </p>
-                  {process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ? (
-                    <>
-                      <MobileAccountButton
-                        role={member.role}
-                        onOpen={() => setMobileNavigationOpen(false)}
-                      />
-                      {member.role === "owner" && (
-                        <Link
-                          href="/pricing"
-                          className={cn(
-                            buttonVariants({ variant: "ghost" }),
-                            "w-full justify-start gap-3 rounded-xl px-3 text-muted-foreground",
-                          )}
-                          onClick={() => setMobileNavigationOpen(false)}
-                        >
-                          <CreditCard className="size-5" aria-hidden="true" />
-                          Plan &amp; billing
-                        </Link>
-                      )}
-                      <SignOutButton redirectUrl="/">
-                        <Button
-                          variant="ghost"
-                          className="w-full justify-start gap-3 rounded-xl px-3 text-muted-foreground"
-                          onClick={() => setMobileNavigationOpen(false)}
-                        >
-                          <LogOut className="size-5" aria-hidden="true" />
-                          Sign out
-                        </Button>
-                      </SignOutButton>
-                    </>
-                  ) : (
-                    <div className="flex items-center gap-3 rounded-xl px-3 py-2.5">
-                      <Avatar className="size-9">
-                        <AvatarFallback className="bg-primary/10 text-primary">DO</AvatarFallback>
-                      </Avatar>
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium">{member.displayName}</p>
-                        <p className="truncate text-xs text-muted-foreground">Demo account</p>
+            <div className="flex items-center gap-2">
+              <ThemeToggle />
+              <Sheet open={mobileNavigationOpen} onOpenChange={setMobileNavigationOpen}>
+                <SheetTrigger render={<Button variant="outline" size="icon" aria-label="Open navigation" />}>
+                  <Menu className="size-4" />
+                </SheetTrigger>
+                <SheetContent side="right" className="w-72 p-5">
+                  <SheetTitle className="mb-6">Navigation</SheetTitle>
+                  <Navigation role={member.role} onNavigate={() => setMobileNavigationOpen(false)} />
+                  <div className="mt-auto border-t pt-4">
+                    <p className="mb-2 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                      Account
+                    </p>
+                    {process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ? (
+                      <>
+                        <MobileAccountButton
+                          role={member.role}
+                          onOpen={() => setMobileNavigationOpen(false)}
+                        />
+                        {member.role === "owner" && (
+                          <Link
+                            href="/pricing"
+                            className={cn(
+                              buttonVariants({ variant: "ghost" }),
+                              "w-full justify-start gap-3 rounded-xl px-3 text-muted-foreground",
+                            )}
+                            onClick={() => setMobileNavigationOpen(false)}
+                          >
+                            <CreditCard className="size-5" aria-hidden="true" />
+                            Plan &amp; billing
+                          </Link>
+                        )}
+                        <SignOutButton redirectUrl="/">
+                          <Button
+                            variant="ghost"
+                            className="w-full justify-start gap-3 rounded-xl px-3 text-muted-foreground"
+                            onClick={() => setMobileNavigationOpen(false)}
+                          >
+                            <LogOut className="size-5" aria-hidden="true" />
+                            Sign out
+                          </Button>
+                        </SignOutButton>
+                      </>
+                    ) : (
+                      <div className="flex items-center gap-3 rounded-xl px-3 py-2.5">
+                        <Avatar className="size-9">
+                          <AvatarFallback className="bg-primary/10 text-primary">DO</AvatarFallback>
+                        </Avatar>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium">{member.displayName}</p>
+                          <p className="truncate text-xs text-muted-foreground">Demo account</p>
+                        </div>
                       </div>
-                    </div>
-                  )}
-                </div>
-              </SheetContent>
-            </Sheet>
+                    )}
+                  </div>
+                </SheetContent>
+              </Sheet>
+            </div>
           </div>
         </header>
 
         {workspace.demo && (
-          <div className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-center text-xs font-medium text-amber-900">
+          <div className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-center text-xs font-medium text-amber-900 dark:border-amber-900 dark:bg-amber-950/50 dark:text-amber-100">
             Local demo workspace · Sample records are clearly marked and must not be used as evidence.
           </div>
         )}

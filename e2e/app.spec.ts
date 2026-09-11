@@ -17,6 +17,26 @@ test("public homepage presents the Family Daybook brochure", async ({ page }) =>
   await expect(page.getByText(/local demo workspace/i)).toHaveCount(0);
 });
 
+test("appearance follows the system by default and saves an override", async ({ page }) => {
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.goto("/");
+
+  const root = page.locator("html");
+  const appearance = page.getByRole("button", { name: "Choose appearance" }).first();
+  await expect(root).toHaveClass(/\bdark\b/);
+
+  await appearance.click();
+  await page.getByRole("menuitemradio", { name: "Light" }).click();
+  await expect(root).not.toHaveClass(/\bdark\b/);
+
+  await page.reload();
+  await expect(root).not.toHaveClass(/\bdark\b/);
+
+  await appearance.click();
+  await page.getByRole("menuitemradio", { name: "System" }).click();
+  await expect(root).toHaveClass(/\bdark\b/);
+});
+
 test("public pages have no serious accessibility violations", async ({ page }) => {
   await page.goto("/");
   const results = await new AxeBuilder({ page }).analyze();

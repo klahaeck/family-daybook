@@ -50,7 +50,7 @@ export function IncidentsView({
             <Card key={incident.id}>
               <CardContent className="p-5 sm:p-6">
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
-                  <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-amber-50 text-amber-900"><ShieldCheck className="size-5" /></span>
+                  <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-amber-50 text-amber-900 dark:bg-amber-950/60 dark:text-amber-200"><ShieldCheck className="size-5" /></span>
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2"><Badge variant="outline">{INCIDENT_LABELS[incident.category]}</Badge><span className="text-xs text-muted-foreground">Occurred {formatDateTime(incident.occurredAt, workspace.timezone)}</span></div>
                     <p className="mt-4 whitespace-pre-wrap text-sm leading-6">{incident.observations}</p>

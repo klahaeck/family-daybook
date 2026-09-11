@@ -74,12 +74,12 @@ export default async function MarketingHome() {
     <MarketingShell signedIn={signedIn}>
       <main>
         <section className="relative isolate overflow-hidden">
-          <div className="absolute inset-0 -z-20 bg-[linear-gradient(180deg,#f8fbf9_0%,#f1f7f2_62%,var(--background)_100%)]" />
+          <div className="absolute inset-0 -z-20 bg-[linear-gradient(180deg,var(--hero-start)_0%,var(--hero-middle)_62%,var(--background)_100%)]" />
           <div className="absolute -left-40 top-4 -z-10 size-[34rem] rounded-full bg-secondary/80 blur-3xl" />
-          <div className="absolute -right-52 top-32 -z-10 size-[38rem] rounded-full bg-[#e8f0dc] blur-3xl" />
+          <div className="absolute -right-52 top-32 -z-10 size-[38rem] rounded-full bg-[var(--hero-glow)] blur-3xl" />
           <div className="mx-auto grid max-w-7xl items-center gap-14 px-4 py-16 sm:px-6 sm:py-24 lg:grid-cols-[0.92fr_1.08fr] lg:gap-16 lg:px-8 lg:py-28">
             <div>
-              <div className="inline-flex items-center gap-2 rounded-full border border-primary/15 bg-white/75 px-3 py-1.5 text-xs font-semibold text-primary shadow-sm">
+              <div className="inline-flex items-center gap-2 rounded-full border border-primary/15 bg-card/75 px-3 py-1.5 text-xs font-semibold text-primary shadow-sm">
                 <Sparkles className="size-3.5" aria-hidden="true" />
                 Private family recordkeeping
               </div>
@@ -91,7 +91,7 @@ export default async function MarketingHome() {
               </p>
               <div className="mt-9 flex flex-col gap-3 sm:flex-row">
                 <DaybookLink signedIn={signedIn} className="h-12 px-6 text-base shadow-lg shadow-primary/15" />
-                <Link href="/#how-it-works" className={cn(buttonVariants({ variant: "outline", size: "lg" }), "h-12 bg-white/70 px-6 text-base")}>
+                <Link href="/#how-it-works" className={cn(buttonVariants({ variant: "outline", size: "lg" }), "h-12 bg-card/70 px-6 text-base")}>
                   See how it works
                 </Link>
               </div>
@@ -104,7 +104,7 @@ export default async function MarketingHome() {
           </div>
         </section>
 
-        <section className="border-y bg-white" aria-label="Family Daybook principles">
+        <section className="border-y bg-card" aria-label="Family Daybook principles">
           <div className="mx-auto grid max-w-7xl divide-y px-4 sm:px-6 md:grid-cols-3 md:divide-x md:divide-y-0 lg:px-8">
             {promises.map((promise) => (
               <div key={promise.label} className="flex items-center gap-4 px-2 py-6 md:px-6 lg:py-8">
@@ -139,7 +139,7 @@ export default async function MarketingHome() {
           </div>
         </section>
 
-        <section id="features" className="scroll-mt-32 bg-[#eef5ef] px-4 py-20 sm:px-6 sm:py-28 lg:px-8">
+        <section id="features" className="scroll-mt-32 bg-[var(--marketing-tint)] px-4 py-20 sm:px-6 sm:py-28 lg:px-8">
           <div className="mx-auto max-w-7xl">
             <div className="mx-auto max-w-2xl text-center">
               <p className="text-xs font-bold uppercase tracking-[0.18em] text-primary">Made for the whole day</p>
@@ -148,7 +148,7 @@ export default async function MarketingHome() {
             </div>
             <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {features.map((feature) => (
-                <article key={feature.title} className="rounded-3xl border border-white/80 bg-white/85 p-6 shadow-sm backdrop-blur">
+                <article key={feature.title} className="rounded-3xl border border-border/80 bg-card/85 p-6 shadow-sm backdrop-blur">
                   <span className="grid size-11 place-items-center rounded-2xl bg-secondary text-primary">
                     <feature.icon className="size-5" aria-hidden="true" />
                   </span>
@@ -189,7 +189,7 @@ export default async function MarketingHome() {
         </section>
 
         <section className="px-4 pb-20 pt-4 sm:px-6 sm:pb-28 lg:px-8">
-          <div className="mx-auto max-w-5xl rounded-[2rem] border bg-[linear-gradient(135deg,#f2f7f3,#e4efe6)] px-6 py-12 text-center shadow-sm sm:px-12 sm:py-16">
+          <div className="mx-auto max-w-5xl rounded-[2rem] border bg-[linear-gradient(135deg,var(--cta-start),var(--cta-end))] px-6 py-12 text-center shadow-sm sm:px-12 sm:py-16">
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-primary">Begin with today</p>
             <h2 className="mx-auto mt-4 max-w-3xl text-balance text-4xl font-semibold tracking-tight sm:text-5xl">A clear family record can start with one ordinary day.</h2>
             <p className="mx-auto mt-5 max-w-2xl text-lg leading-8 text-muted-foreground">Create your private workspace and give the details that matter a calmer place to live.</p>

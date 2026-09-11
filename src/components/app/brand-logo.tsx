@@ -16,7 +16,7 @@ export function BrandLogo({
       aria-hidden={decorative || undefined}
       width={760}
       height={180}
-      className={cn("h-auto", className)}
+      className={cn("h-auto dark:brightness-200 dark:saturate-150", className)}
     />
   );
 }

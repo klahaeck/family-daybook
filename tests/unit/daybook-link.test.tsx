@@ -17,4 +17,13 @@ describe("DaybookLink", () => {
     expect(markup).toContain('href="/app"');
     expect(markup).toContain("View your daybook");
   });
+
+  it("keeps the full accessible name when a compact mobile label is shown", () => {
+    const markup = renderToStaticMarkup(
+      <DaybookLink signedIn={false} compactLabel="Start" />,
+    );
+
+    expect(markup).toContain('aria-label="Start your daybook"');
+    expect(markup).toContain('class="sm:hidden">Start</span>');
+  });
 });

@@ -21,7 +21,7 @@ export function AppointmentsView({ initialData, childOptions, caregivers, worksp
           <Card key={appointment.id}>
             <CardContent className="p-5">
               <div className="flex items-start justify-between gap-3">
-                <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-blue-50 text-blue-800"><CalendarCheck2 className="size-5" /></span>
+                <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-blue-50 text-blue-800 dark:bg-blue-950/60 dark:text-blue-200"><CalendarCheck2 className="size-5" /></span>
                 <Badge className="capitalize" variant={appointment.status === "missed" ? "destructive" : "secondary"}>{appointment.status}</Badge>
               </div>
               <h2 className="mt-4 text-lg font-semibold">{appointment.title}</h2>

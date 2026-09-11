@@ -20,10 +20,10 @@ import { fetchTimeline } from "@/lib/fetchers";
 import type { CareStatus, RecordType, TimelineData } from "@/lib/domain/types";
 
 const kindInfo = {
-  care: { label: "Care", icon: HeartHandshake, className: "bg-emerald-50 text-emerald-800" },
-  appointment: { label: "Appointment", icon: CalendarDays, className: "bg-blue-50 text-blue-800" },
-  incident: { label: "Incident", icon: ShieldAlert, className: "bg-amber-50 text-amber-900" },
-  special_day: { label: "Special day", icon: CalendarRange, className: "bg-violet-50 text-violet-900" },
+  care: { label: "Care", icon: HeartHandshake, className: "bg-emerald-50 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-200" },
+  appointment: { label: "Appointment", icon: CalendarDays, className: "bg-blue-50 text-blue-800 dark:bg-blue-950/60 dark:text-blue-200" },
+  incident: { label: "Incident", icon: ShieldAlert, className: "bg-amber-50 text-amber-900 dark:bg-amber-950/60 dark:text-amber-200" },
+  special_day: { label: "Special day", icon: CalendarRange, className: "bg-violet-50 text-violet-900 dark:bg-violet-950/60 dark:text-violet-200" },
 };
 
 const kindFilters = [

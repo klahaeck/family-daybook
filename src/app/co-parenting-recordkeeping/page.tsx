@@ -160,12 +160,12 @@ export default async function CoParentingRecordkeepingPage() {
     <MarketingShell signedIn={signedIn}>
       <main>
         <section className="relative isolate overflow-hidden">
-          <div className="absolute inset-0 -z-20 bg-[linear-gradient(180deg,#f8fbf9_0%,#f0f6f1_66%,var(--background)_100%)]" />
+          <div className="absolute inset-0 -z-20 bg-[linear-gradient(180deg,var(--hero-start)_0%,var(--hero-middle)_66%,var(--background)_100%)]" />
           <div className="absolute -left-48 top-0 -z-10 size-[36rem] rounded-full bg-secondary/80 blur-3xl" />
-          <div className="absolute -right-52 top-36 -z-10 size-[38rem] rounded-full bg-[#e8f0dc] blur-3xl" />
+          <div className="absolute -right-52 top-36 -z-10 size-[38rem] rounded-full bg-[var(--hero-glow)] blur-3xl" />
           <div className="mx-auto grid max-w-7xl items-center gap-14 px-4 py-16 sm:px-6 sm:py-24 lg:grid-cols-[0.94fr_1.06fr] lg:gap-16 lg:px-8 lg:py-28">
             <div>
-              <div className="inline-flex items-center gap-2 rounded-full border border-primary/15 bg-white/75 px-3 py-1.5 text-xs font-semibold text-primary shadow-sm">
+              <div className="inline-flex items-center gap-2 rounded-full border border-primary/15 bg-card/75 px-3 py-1.5 text-xs font-semibold text-primary shadow-sm">
                 <Sparkles className="size-3.5" aria-hidden="true" />
                 Calm co-parenting documentation
               </div>
@@ -185,7 +185,7 @@ export default async function CoParentingRecordkeepingPage() {
                   href="#how-it-works"
                   className={cn(
                     buttonVariants({ variant: "outline", size: "lg" }),
-                    "h-12 bg-white/70 px-6 text-base",
+                    "h-12 bg-card/70 px-6 text-base",
                   )}
                 >
                   See how Family Daybook works
@@ -200,7 +200,7 @@ export default async function CoParentingRecordkeepingPage() {
           </div>
         </section>
 
-        <section className="border-y bg-white" aria-label="Family Daybook recordkeeping principles">
+        <section className="border-y bg-card" aria-label="Family Daybook recordkeeping principles">
           <div className="mx-auto grid max-w-7xl divide-y px-4 sm:px-6 md:grid-cols-3 md:divide-x md:divide-y-0 lg:px-8">
             {[
               ["Private by design", "Records stay in your workspace"],
@@ -254,7 +254,7 @@ export default async function CoParentingRecordkeepingPage() {
           </div>
         </section>
 
-        <section className="bg-[#eef5ef] px-4 py-20 sm:px-6 sm:py-28 lg:px-8">
+        <section className="bg-[var(--marketing-tint)] px-4 py-20 sm:px-6 sm:py-28 lg:px-8">
           <div className="mx-auto grid max-w-7xl gap-12 lg:grid-cols-[0.78fr_1.22fr] lg:items-start lg:gap-16">
             <div className="lg:sticky lg:top-32">
               <p className="text-xs font-bold uppercase tracking-[0.18em] text-primary">History that remains clear</p>
@@ -269,10 +269,10 @@ export default async function CoParentingRecordkeepingPage() {
             <div className="relative space-y-4 before:absolute before:bottom-10 before:left-6 before:top-10 before:w-px before:bg-primary/20 sm:before:left-7">
               {historyPoints.map((point, index) => (
                 <article key={point.title} className="relative pl-14 sm:pl-16">
-                  <span className="absolute left-0 top-7 z-10 grid size-12 place-items-center rounded-2xl border-4 border-[#eef5ef] bg-primary text-primary-foreground shadow-sm sm:size-14">
+                  <span className="absolute left-0 top-7 z-10 grid size-12 place-items-center rounded-2xl border-4 border-[var(--marketing-tint)] bg-primary text-primary-foreground shadow-sm sm:size-14">
                     <point.icon className="size-5" aria-hidden="true" />
                   </span>
-                  <div className="rounded-3xl border border-white/80 bg-white/85 p-6 shadow-sm backdrop-blur sm:p-7">
+                  <div className="rounded-3xl border border-border/80 bg-card/85 p-6 shadow-sm backdrop-blur sm:p-7">
                     <p className="font-mono text-xs font-bold tracking-widest text-primary">0{index + 1}</p>
                     <h3 className="mt-5 text-2xl font-semibold">{point.title}</h3>
                     <p className="mt-3 leading-7 text-muted-foreground">{point.description}</p>
@@ -337,7 +337,7 @@ export default async function CoParentingRecordkeepingPage() {
           </div>
         </section>
 
-        <section className="bg-white px-4 py-20 sm:px-6 sm:py-28 lg:px-8" aria-labelledby="co-parenting-faq-heading">
+        <section className="bg-card px-4 py-20 sm:px-6 sm:py-28 lg:px-8" aria-labelledby="co-parenting-faq-heading">
           <div className="mx-auto grid max-w-7xl gap-10 lg:grid-cols-[0.72fr_1.28fr] lg:gap-16">
             <div>
               <p className="text-xs font-bold uppercase tracking-[0.18em] text-primary">Frequently asked questions</p>
@@ -360,7 +360,7 @@ export default async function CoParentingRecordkeepingPage() {
         </section>
 
         <section className="px-4 py-20 sm:px-6 sm:py-28 lg:px-8">
-          <div className="mx-auto max-w-5xl rounded-[2rem] border bg-[linear-gradient(135deg,#f2f7f3,#e4efe6)] px-6 py-12 text-center shadow-sm sm:px-12 sm:py-16">
+          <div className="mx-auto max-w-5xl rounded-[2rem] border bg-[linear-gradient(135deg,var(--cta-start),var(--cta-end))] px-6 py-12 text-center shadow-sm sm:px-12 sm:py-16">
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-primary">Start with an ordinary day</p>
             <h2 className="mx-auto mt-4 max-w-3xl text-balance text-4xl font-semibold tracking-tight sm:text-5xl">
               You do not need to reconstruct everything at once.

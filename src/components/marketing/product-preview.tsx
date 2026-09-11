@@ -17,21 +17,21 @@ export function ProductPreview() {
   return (
     <div className="relative mx-auto w-full max-w-[36rem] lg:mx-0" aria-label="Example Family Daybook dashboard">
       <div className="absolute -inset-8 rounded-[3rem] bg-[radial-gradient(circle_at_center,var(--surface-glow),transparent_68%)] blur-2xl" />
-      <div className="relative overflow-hidden rounded-[2rem] border border-white/80 bg-white/94 p-3 shadow-[0_32px_90px_rgba(23,72,60,0.18)] backdrop-blur sm:p-4">
-        <div className="rounded-[1.5rem] border bg-[#f8fbf9] p-4 sm:p-5">
+      <div className="relative overflow-hidden rounded-[2rem] border border-border/80 bg-card/94 p-3 shadow-[0_32px_90px_rgba(23,72,60,0.18)] backdrop-blur sm:p-4">
+        <div className="rounded-[1.5rem] border bg-[var(--preview-surface)] p-4 sm:p-5">
           <div className="flex items-start justify-between gap-3 border-b pb-4">
             <div>
               <p className="text-[0.65rem] font-bold uppercase tracking-[0.18em] text-primary/70">Today</p>
               <p className="mt-1 font-heading text-xl font-semibold text-foreground sm:text-2xl">Wednesday, July 16</p>
             </div>
-            <div className="flex items-center gap-1.5 rounded-full border border-emerald-900/10 bg-emerald-50 px-2.5 py-1.5 text-[0.65rem] font-semibold text-emerald-900">
+            <div className="flex items-center gap-1.5 rounded-full border border-emerald-900/10 bg-emerald-50 px-2.5 py-1.5 text-[0.65rem] font-semibold text-emerald-900 dark:border-emerald-700/40 dark:bg-emerald-950/50 dark:text-emerald-100">
               <LockKeyhole className="size-3" aria-hidden="true" />
               Private workspace
             </div>
           </div>
 
           <div className="mt-4 grid gap-4 sm:grid-cols-[1.25fr_0.75fr]">
-            <div className="rounded-2xl border bg-white p-4 shadow-sm">
+            <div className="rounded-2xl border bg-card p-4 shadow-sm">
               <div className="mb-3 flex items-center justify-between">
                 <p className="text-sm font-semibold">Daily rhythm</p>
                 <span className="text-xs font-medium text-primary">3 complete</span>
@@ -53,8 +53,8 @@ export function ProductPreview() {
             </div>
 
             <div className="space-y-3">
-              <div className="rounded-2xl border bg-white p-4 shadow-sm">
-                <div className="flex size-8 items-center justify-center rounded-xl bg-amber-100 text-amber-800">
+              <div className="rounded-2xl border bg-card p-4 shadow-sm">
+                <div className="flex size-8 items-center justify-center rounded-xl bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-200">
                   <CalendarDays className="size-4" aria-hidden="true" />
                 </div>
                 <p className="mt-3 text-xs font-semibold">Upcoming</p>
@@ -72,7 +72,7 @@ export function ProductPreview() {
             </div>
           </div>
 
-          <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl border border-dashed bg-white/75 px-3 py-2.5 text-[0.68rem] font-medium text-muted-foreground">
+          <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl border border-dashed bg-card/75 px-3 py-2.5 text-[0.68rem] font-medium text-muted-foreground">
             <span className="flex items-center gap-1.5"><Clock3 className="size-3.5 text-primary" aria-hidden="true" /> Clear timeline</span>
             <span className="flex items-center gap-1.5"><FileCheck2 className="size-3.5 text-primary" aria-hidden="true" /> Organized reports</span>
             <span className="flex items-center gap-1.5"><LockKeyhole className="size-3.5 text-primary" aria-hidden="true" /> Authenticated access</span>
