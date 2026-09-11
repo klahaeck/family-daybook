@@ -18,6 +18,7 @@ import type {
   CareEntry,
   DailyLog,
   Incident,
+  IncidentsData,
   Member,
   PurgeTombstone,
   RecordRevision,
@@ -336,6 +337,22 @@ export class MemoryParentingRepository implements ParentingRepository {
       (a, b) =>
         new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime(),
     );
+  }
+
+  async getIncidentsData(context: RequestContext): Promise<IncidentsData> {
+    return {
+      incidents: await this.getIncidents(),
+      attachments: state().attachments
+        .filter(
+          (attachment) =>
+            attachment.workspaceId === context.workspace.id &&
+            attachment.recordType === "incident",
+        )
+        .sort(
+          (a, b) =>
+            new Date(a.uploadedAt).getTime() - new Date(b.uploadedAt).getTime(),
+        ),
+    };
   }
 
   async getReports() {
@@ -1249,6 +1266,22 @@ export class MemoryParentingRepository implements ParentingRepository {
 
   async addAttachment(context: RequestContext, attachment: Attachment) {
     requireOwner(context.member.role);
+    if (attachment.workspaceId !== context.workspace.id) throw new Error("FORBIDDEN");
+    const existing = state().attachments.find((item) => item.id === attachment.id);
+    if (existing) {
+      if (
+        existing.workspaceId !== attachment.workspaceId ||
+        existing.recordType !== attachment.recordType ||
+        existing.recordId !== attachment.recordId ||
+        existing.pathname !== attachment.pathname
+      ) {
+        throw new Error("ATTACHMENT_CONFLICT");
+      }
+      return;
+    }
+    if (state().attachments.some((item) => item.pathname === attachment.pathname)) {
+      throw new Error("ATTACHMENT_CONFLICT");
+    }
     state().attachments.push(attachment);
     await this.audit(context, "created", "attachment", attachment.id);
   }
@@ -1258,7 +1291,10 @@ export class MemoryParentingRepository implements ParentingRepository {
     attachmentId: string,
   ): Promise<Attachment | null> {
     const data = state();
-    const attachment = data.attachments.find((item) => item.id === attachmentId);
+    const attachment = data.attachments.find(
+      (item) =>
+        item.id === attachmentId && item.workspaceId === context.workspace.id,
+    );
     if (!attachment) return null;
     if (context.member.role === "reviewer" && attachment.recordType === "care_entry") {
       const entry = data.careEntries.find((item) => item.id === attachment.recordId);

@@ -70,6 +70,14 @@ export async function ensureMongoIndexes(): Promise<void> {
       { unique: true },
     ),
     db.collection("attachments").createIndex({ workspaceId: 1, recordId: 1 }),
+    db.collection("attachments").createIndex(
+      { id: 1 },
+      { unique: true, name: "attachment_id_unique" },
+    ),
+    db.collection("attachments").createIndex(
+      { pathname: 1 },
+      { unique: true, name: "attachment_pathname_unique" },
+    ),
     db.collection("auditEvents").createIndex({ workspaceId: 1, occurredAt: 1 }),
     db.collection("reportSnapshots").createIndex({ workspaceId: 1, createdAt: -1 }),
     db.collection("dailyLogs").createIndex(

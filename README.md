@@ -15,7 +15,7 @@ It is a recordkeeping tool, not legal advice, an emergency service, or a guarant
 - Neutral incident records for safety hazards and concerning interactions
 - Direct care-record edits while a day is open, then append-only corrections after finalization
 - Server-controlled entry timestamps and visible late-entry labels
-- Private JPEG, PNG, HEIC, and PDF attachments with file-signature validation
+- Private JPEG, PNG, HEIC, PDF, MP4, MOV, and WebM attachments with file-signature validation; videos may be up to 50 MB
 - Searchable combined timeline and authorized attachment downloads
 - Finalized-day visibility for read-only attorney reviewers
 - Vercel Workflow report generation with PDF, original files, JSON manifest, and checksum ZIP
@@ -70,7 +70,7 @@ Hard purge is disabled by default. When enabled, it removes active record conten
 
 - Next.js App Router, TypeScript, Tailwind CSS, and shadcn/ui
 - TanStack Query for hydrated interactive reads and cache invalidation
-- Validated Server Actions for mutations and authenticated GET Route Handlers for reads
+- Validated Server Actions for mutations, presigned direct-to-Blob media uploads, and authenticated GET Route Handlers for reads
 - Native MongoDB Node.js driver with Stable API and transactional record/revision/audit writes
 - Clerk identity with application roles stored in MongoDB
 - Clerk Billing with owner-based access for the paid subscriber `general` Plan

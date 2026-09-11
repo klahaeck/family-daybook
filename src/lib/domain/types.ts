@@ -1,3 +1,5 @@
+import type { AttachmentContentType } from "@/lib/domain/attachments";
+
 export type Role = "owner" | "reviewer";
 
 export type CareStatus =
@@ -230,12 +232,17 @@ export interface Attachment {
   recordId: string;
   revisionId: string;
   originalName: string;
-  contentType: "image/jpeg" | "image/png" | "image/heic" | "application/pdf";
+  contentType: AttachmentContentType;
   size: number;
   sha256: string;
   pathname: string;
   uploadedAt: string;
   uploadedBy: string;
+}
+
+export interface IncidentsData {
+  incidents: Incident[];
+  attachments: Attachment[];
 }
 
 export interface AuditEvent {

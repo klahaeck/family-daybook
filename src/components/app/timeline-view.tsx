@@ -34,7 +34,7 @@ const kindFilters = [
   { value: "special_day", label: "Special days" },
 ];
 
-export function TimelineView({ initialData, canPurge = false }: { initialData: TimelineData; canPurge?: boolean }) {
+export function TimelineView({ initialData, canManage = false, canPurge = false }: { initialData: TimelineData; canManage?: boolean; canPurge?: boolean }) {
   const { data } = useQuery({ queryKey: ["timeline"], queryFn: fetchTimeline, initialData });
   const [kind, setKind] = useState("all");
   const [query, setQuery] = useState("");
@@ -117,7 +117,7 @@ export function TimelineView({ initialData, canPurge = false }: { initialData: T
                     </div>
                     <div className="flex items-center gap-1">
                       <RevisionHistoryDialog revisions={revisions} timezone={data.workspace.timezone} />
-                      {item.kind !== "special_day" && item.description && <CorrectionDialog recordType={(item.kind === "care" ? "care_entry" : item.kind) as RecordType} recordId={item.id} currentText={item.description} mode={item.kind === "care" && item.dailyLogStatus === "open" ? "edit" : "correct"} />}
+                      {canManage && item.kind !== "special_day" && item.description && <CorrectionDialog recordType={(item.kind === "care" ? "care_entry" : item.kind) as RecordType} recordId={item.id} currentText={item.description} mode={item.kind === "care" && item.dailyLogStatus === "open" ? "edit" : "correct"} />}
                       {canPurge && item.kind !== "special_day" && <PurgeDialog recordType={(item.kind === "care" ? "care_entry" : item.kind) as RecordType} recordId={item.id} />}
                     </div>
                   </div>

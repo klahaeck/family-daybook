@@ -1,11 +1,15 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import JSZip from "jszip";
 
 import { MemoryParentingRepository, resetMemoryRepository } from "@/lib/repository/memory-repository";
 import type { Identity } from "@/lib/auth/identity";
 import type { Attachment } from "@/lib/domain/types";
 import { generateEvidencePackage } from "@/lib/reporting/generate-package";
-import { getPrivateFile } from "@/lib/storage/private-files";
+import { getPrivateFile, putPrivateFile } from "@/lib/storage/private-files";
+import {
+  completeAttachmentUpload,
+  prepareAttachmentUpload,
+} from "@/lib/storage/attachment-uploads";
 import { localDateInTimezone, shiftLocalDate } from "@/lib/domain/dates";
 import { createArrangementTasksForDate } from "@/lib/domain/arrangements";
 
@@ -19,6 +23,161 @@ const identity: Identity = {
 
 describe("memory repository integration", () => {
   beforeEach(() => resetMemoryRepository());
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("adds a signature-verified video to a saved incident idempotently", async () => {
+    vi.stubEnv("BLOB_READ_WRITE_TOKEN", "");
+    vi.stubEnv("BLOB_STORE_ID", "");
+    vi.stubEnv("VERCEL_OIDC_TOKEN", "");
+    const repository = new MemoryParentingRepository();
+    const context = await repository.resolveContext(identity);
+    const incident = await repository.createIncident(context, {
+      category: "safety_hazard",
+      occurredAt: "2026-07-14T12:00:00.000Z",
+      childIds: [],
+      peoplePresent: [],
+      witnesses: [],
+      observations: "A saved incident that receives a supporting video.",
+    });
+    const video = Buffer.from(
+      "000000186674797069736f6d0000020069736f6d69736f32",
+      "hex",
+    );
+    const prepared = await prepareAttachmentUpload(context, {
+      recordType: "incident",
+      recordId: incident.id,
+      originalName: "supporting-video.mp4",
+      declaredContentType: "video/mp4",
+      declaredSize: video.byteLength,
+    });
+    expect(prepared.mode).toBe("local");
+    await putPrivateFile(prepared.claim.pathname, video, "video/mp4");
+
+    const first = await completeAttachmentUpload(context, prepared.claim);
+    const second = await completeAttachmentUpload(context, prepared.claim);
+    const incidentsData = await repository.getIncidentsData(context);
+
+    expect(first).toMatchObject({
+      id: prepared.claim.attachmentId,
+      recordId: incident.id,
+      contentType: "video/mp4",
+      size: video.byteLength,
+    });
+    expect(first.sha256).toHaveLength(64);
+    expect(second.id).toBe(first.id);
+    expect(incidentsData.attachments).toHaveLength(1);
+  });
+
+  it("rejects a file whose signature does not match its prepared video type", async () => {
+    vi.stubEnv("BLOB_READ_WRITE_TOKEN", "");
+    vi.stubEnv("BLOB_STORE_ID", "");
+    vi.stubEnv("VERCEL_OIDC_TOKEN", "");
+    const repository = new MemoryParentingRepository();
+    const context = await repository.resolveContext(identity);
+    const incident = await repository.createIncident(context, {
+      category: "other",
+      occurredAt: "2026-07-14T12:00:00.000Z",
+      childIds: [],
+      peoplePresent: [],
+      witnesses: [],
+      observations: "A saved incident used to check a spoofed attachment.",
+    });
+    const png = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "base64",
+    );
+    const prepared = await prepareAttachmentUpload(context, {
+      recordType: "incident",
+      recordId: incident.id,
+      originalName: "renamed-video.mp4",
+      declaredContentType: "video/mp4",
+      declaredSize: png.byteLength,
+    });
+    await putPrivateFile(prepared.claim.pathname, png, "video/mp4");
+
+    await expect(
+      completeAttachmentUpload(context, prepared.claim),
+    ).rejects.toThrow("ATTACHMENT_MISMATCH");
+    expect(await getPrivateFile(prepared.claim.pathname)).toBeNull();
+    expect((await repository.getIncidentsData(context)).attachments).toHaveLength(0);
+  });
+
+  it("enforces attachment paths, capacity, and reviewer read-only access", async () => {
+    vi.stubEnv("BLOB_READ_WRITE_TOKEN", "");
+    vi.stubEnv("BLOB_STORE_ID", "");
+    vi.stubEnv("VERCEL_OIDC_TOKEN", "");
+    const repository = new MemoryParentingRepository();
+    const context = await repository.resolveContext(identity);
+    const incident = await repository.createIncident(context, {
+      category: "other",
+      occurredAt: "2026-07-14T12:00:00.000Z",
+      childIds: [],
+      peoplePresent: [],
+      witnesses: [],
+      observations: "A saved incident used to verify attachment boundaries.",
+    });
+    const prepared = await prepareAttachmentUpload(context, {
+      recordType: "incident",
+      recordId: incident.id,
+      originalName: "one.pdf",
+      declaredContentType: "application/pdf",
+      declaredSize: 10,
+    });
+    await expect(
+      completeAttachmentUpload(context, {
+        ...prepared.claim,
+        pathname: `attachments/another-workspace/${incident.id}/one.pdf`,
+      }),
+    ).rejects.toThrow("ATTACHMENT_PATH");
+
+    for (let index = 0; index < 5; index += 1) {
+      await repository.addAttachment(context, {
+        id: `attachment_capacity_${index}`,
+        workspaceId: context.workspace.id,
+        recordType: "incident",
+        recordId: incident.id,
+        revisionId: incident.currentRevisionId,
+        originalName: `attachment-${index}.pdf`,
+        contentType: "application/pdf",
+        size: 10,
+        sha256: `${index}`.repeat(64),
+        pathname: `attachments/${context.workspace.id}/${incident.id}/capacity-${index}.pdf`,
+        uploadedAt: new Date(index).toISOString(),
+        uploadedBy: context.member.id,
+      });
+    }
+    await expect(
+      prepareAttachmentUpload(context, {
+        recordType: "incident",
+        recordId: incident.id,
+        originalName: "six.pdf",
+        declaredContentType: "application/pdf",
+        declaredSize: 10,
+      }),
+    ).rejects.toThrow("ATTACHMENT_LIMIT");
+
+    const reviewer = await repository.inviteReviewer(context, {
+      email: "attachment-reviewer@example.test",
+      displayName: "Attachment Reviewer",
+    });
+    reviewer.status = "active";
+    reviewer.authUserId = "attachment_reviewer";
+    const reviewerContext = await repository.resolveContext({
+      ...identity,
+      authUserId: reviewer.authUserId,
+      email: reviewer.email,
+    });
+    expect((await repository.getIncidentsData(reviewerContext)).attachments).toHaveLength(5);
+    await expect(
+      prepareAttachmentUpload(reviewerContext, {
+        recordType: "incident",
+        recordId: incident.id,
+        originalName: "reviewer.pdf",
+        declaredContentType: "application/pdf",
+        declaredSize: 10,
+      }),
+    ).rejects.toThrow("FORBIDDEN");
+  });
 
   it("stores day notes while open and locks them at finalization", async () => {
     const repository = new MemoryParentingRepository();

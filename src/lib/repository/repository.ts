@@ -6,6 +6,7 @@ import type {
   DailyLog,
   DashboardData,
   Incident,
+  IncidentsData,
   Member,
   PurgeTombstone,
   RecordRevision,
@@ -65,6 +66,7 @@ export interface ParentingRepository {
   getTimeline(context: RequestContext): Promise<TimelineData>;
   getAppointments(context: RequestContext): Promise<Appointment[]>;
   getIncidents(context: RequestContext): Promise<Incident[]>;
+  getIncidentsData(context: RequestContext): Promise<IncidentsData>;
   getReports(context: RequestContext): Promise<ReportSnapshot[]>;
   getSettings(context: RequestContext): Promise<SettingsData>;
   getSpecialArrangements(

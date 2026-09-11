@@ -6,7 +6,9 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   experimental: {
     serverActions: {
-      bodySizeLimit: "20mb",
+      // Production Blob uploads are presigned and direct. This larger ceiling keeps
+      // the in-memory local demo capable of exercising the same 50 MB video policy.
+      bodySizeLimit: "55mb",
     },
   },
   async redirects() {

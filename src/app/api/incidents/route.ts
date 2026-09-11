@@ -6,7 +6,7 @@ export async function GET() {
   try {
     const repository = await getRepository();
     const context = await getRequestContext();
-    return NextResponse.json(await repository.getIncidents(context), { headers: { "Cache-Control": "private, no-store" } });
+    return NextResponse.json(await repository.getIncidentsData(context), { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     return privateRouteError(error);
   }

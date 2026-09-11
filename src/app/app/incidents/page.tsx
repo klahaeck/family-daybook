@@ -8,7 +8,7 @@ export default async function IncidentsPage() {
   const repository = await getRepository();
   const context = await getPageRequestContext();
   const [incidents, settings] = await Promise.all([
-    repository.getIncidents(context),
+    repository.getIncidentsData(context),
     repository.getSettings(context),
   ]);
   return (
@@ -22,6 +22,8 @@ export default async function IncidentsPage() {
         initialData={incidents}
         childOptions={settings.children}
         workspace={context.workspace}
+        canManage={context.member.role === "owner"}
+        canPurge={context.member.role === "owner" && context.workspace.hardDeleteEnabled}
       />
     </AppShell>
   );

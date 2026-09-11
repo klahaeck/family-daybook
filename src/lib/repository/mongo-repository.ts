@@ -19,6 +19,7 @@ import type {
   Child,
   DailyLog,
   Incident,
+  IncidentsData,
   Member,
   PurgeTombstone,
   RecordRevision,
@@ -389,6 +390,17 @@ export class MongoParentingRepository implements ParentingRepository {
         .sort({ occurredAt: -1 })
         .toArray(),
     );
+  }
+
+  async getIncidentsData(context: RequestContext): Promise<IncidentsData> {
+    const [incidents, attachments] = await Promise.all([
+      this.getIncidents(context),
+      (await col<Attachment>("attachments"))
+        .find({ workspaceId: context.workspace.id, recordType: "incident" })
+        .sort({ uploadedAt: 1 })
+        .toArray(),
+    ]);
+    return toPlainData({ incidents, attachments });
   }
 
   async getReports(context: RequestContext) {
@@ -1520,9 +1532,22 @@ export class MongoParentingRepository implements ParentingRepository {
 
   async addAttachment(context: RequestContext, attachment: Attachment) {
     requireOwner(context.member.role);
+    if (attachment.workspaceId !== context.workspace.id) throw new Error("FORBIDDEN");
     await this.transaction(async (session) => {
-      await (await col<Attachment>("attachments")).insertOne(attachment, { session });
-      await this.insertAudit(context, "created", "attachment", attachment.id, session);
+      const result = await (await col<Attachment>("attachments")).updateOne(
+        {
+          id: attachment.id,
+          workspaceId: attachment.workspaceId,
+          recordType: attachment.recordType,
+          recordId: attachment.recordId,
+          pathname: attachment.pathname,
+        },
+        { $setOnInsert: attachment },
+        { upsert: true, session },
+      );
+      if (result.upsertedCount) {
+        await this.insertAudit(context, "created", "attachment", attachment.id, session);
+      }
     });
   }
 

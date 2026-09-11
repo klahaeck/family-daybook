@@ -17,6 +17,7 @@ export default async function TimelinePage() {
       />
       <TimelineView
         initialData={data}
+        canManage={context.member.role === "owner"}
         canPurge={context.member.role === "owner" && context.workspace.hardDeleteEnabled}
       />
     </AppShell>

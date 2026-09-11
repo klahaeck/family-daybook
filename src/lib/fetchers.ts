@@ -1,7 +1,7 @@
 import type {
   Appointment,
   DashboardData,
-  Incident,
+  IncidentsData,
   ReportSnapshot,
   SpecialArrangementsData,
   TimelineData,
@@ -17,7 +17,7 @@ export const fetchDashboard = (date: string) =>
   getJson<DashboardData>(`/api/dashboard?date=${encodeURIComponent(date)}`);
 export const fetchTimeline = () => getJson<TimelineData>("/api/timeline");
 export const fetchAppointments = () => getJson<Appointment[]>("/api/appointments");
-export const fetchIncidents = () => getJson<Incident[]>("/api/incidents");
+export const fetchIncidents = () => getJson<IncidentsData>("/api/incidents");
 export const fetchReports = () => getJson<ReportSnapshot[]>("/api/reports");
 export const fetchSpecialArrangements = () =>
   getJson<SpecialArrangementsData>("/api/special-arrangements");

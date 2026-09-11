@@ -12,7 +12,15 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import type { RecordType } from "@/lib/domain/types";
 
-export function PurgeDialog({ recordType, recordId }: { recordType: RecordType; recordId: string }) {
+export function PurgeDialog({
+  recordType,
+  recordId,
+  triggerLabel = "Purge",
+}: {
+  recordType: RecordType;
+  recordId: string;
+  triggerLabel?: string;
+}) {
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string>();
   const queryClient = useQueryClient();
@@ -34,7 +42,7 @@ export function PurgeDialog({ recordType, recordId }: { recordType: RecordType; 
   });
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" />}><Trash2 className="size-3.5" /> Purge</DialogTrigger>
+      <DialogTrigger render={<Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" />}><Trash2 className="size-3.5" /> {triggerLabel}</DialogTrigger>
       <DialogContent className="sm:max-w-lg">
         <form action={(formData) => mutation.mutate(formData)}>
           <DialogHeader><DialogTitle>Permanently delete this record?</DialogTitle><DialogDescription>This removes the record, every revision and attachment, and all stored report artifacts that contain it. Downloaded copies and unexpired provider backups cannot be revoked.</DialogDescription></DialogHeader>

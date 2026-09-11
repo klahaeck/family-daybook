@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { ATTACHMENT_CONTENT_TYPES } from "@/lib/domain/attachments";
+
 import { careStatusRecordsProvidedCare } from "./care-entry-rules";
 import type { CareStatus } from "./types";
 
@@ -400,6 +402,19 @@ export const purgeSchema = z.object({
   recordId: z.string().min(1),
   reason: z.string().trim().min(10).max(500),
   confirmation: z.literal("PERMANENTLY DELETE"),
+});
+
+export const attachmentUploadRequestSchema = z.object({
+  recordType: z.enum(["care_entry", "appointment", "incident"]),
+  recordId: z.string().min(1),
+  originalName: z.string().trim().min(1).max(180),
+  declaredContentType: z.enum(ATTACHMENT_CONTENT_TYPES),
+  declaredSize: z.number().int().positive(),
+});
+
+export const attachmentUploadClaimSchema = attachmentUploadRequestSchema.extend({
+  attachmentId: z.string().startsWith("attachment_"),
+  pathname: z.string().min(1).max(500),
 });
 
 export type CareEntryInput = z.infer<typeof careEntrySchema>;

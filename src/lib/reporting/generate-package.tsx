@@ -2,9 +2,11 @@ import "server-only";
 
 import { renderToBuffer } from "@react-pdf/renderer";
 import JSZip from "jszip";
+import { PassThrough, Readable } from "node:stream";
+import type { ReadableStream as NodeReadableStream } from "node:stream/web";
 
 import { canonicalJson, sha256 } from "@/lib/domain/integrity";
-import { getPrivateFile, putPrivateFile } from "@/lib/storage/private-files";
+import { getPrivateFileStream, putPrivateFile } from "@/lib/storage/private-files";
 import type { ReportSource } from "@/lib/repository/repository";
 import { ReportDocument } from "./report-document";
 
@@ -77,17 +79,27 @@ export async function generateEvidencePackage(source: ReportSource) {
   const checksums = [`${pdfHash}  parenting-log.pdf`, `${manifestHash}  manifest.json`];
 
   for (const attachment of source.attachments) {
-    const file = await getPrivateFile(attachment.pathname);
+    const file = await getPrivateFileStream(attachment.pathname);
     if (!file) continue;
     const pathname = `attachments/${attachment.id}-${safeName(attachment.originalName)}`;
-    zip.file(pathname, file.body);
+    zip.file(
+      pathname,
+      Readable.fromWeb(file.stream as unknown as NodeReadableStream<Uint8Array>),
+      { binary: true, compression: "STORE" },
+    );
     checksums.push(`${attachment.sha256}  ${pathname}`);
   }
   zip.file("checksums.sha256", `${checksums.join("\n")}\n`);
-  const zipBuffer = await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
+  const zipStream = new PassThrough();
+  zip.generateNodeStream({
+    type: "nodebuffer",
+    streamFiles: true,
+    compression: "DEFLATE",
+    compressionOptions: { level: 6 },
+  }).pipe(zipStream);
 
   const base = `reports/${source.workspace.id}/${source.snapshot.id}`;
   const pdfPathname = await putPrivateFile(`${base}/parenting-log.pdf`, pdf, "application/pdf");
-  const zipPathname = await putPrivateFile(`${base}/evidence-package.zip`, zipBuffer, "application/zip");
+  const zipPathname = await putPrivateFile(`${base}/evidence-package.zip`, zipStream, "application/zip");
   return { manifestHash, pdfPathname, zipPathname };
 }

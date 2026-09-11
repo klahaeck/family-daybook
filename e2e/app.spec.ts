@@ -402,7 +402,7 @@ test("owner can complete the auditable record lifecycle", async ({ page, request
   const appointmentStatuses = ["attended", "late", "missed"] as const;
   const observation = `At 4:05 PM, water was observed on the tile beside the bathtub. Test ${marker}.`;
   const correctedObservation = `${observation} A towel was placed on the tile at 4:07 PM.`;
-  const attachmentName = `safety-note-${marker}.png`;
+  const attachmentName = `safety-video-${marker}.mp4`;
 
   await page.goto("/app");
   await page.getByRole("button", { name: /Time together/ }).click();
@@ -433,19 +433,43 @@ test("owner can complete the auditable record lifecycle", async ({ page, request
   await page.getByLabel("What was directly observed?").fill(observation);
   await page.getByLabel("Immediate actions").fill("A towel was placed over the wet area.");
   await page.getByLabel("Outcome").fill("The floor was dry when checked again at 4:12 PM.");
-  await page.locator('input[type="file"]').setInputFiles({
-    name: attachmentName,
-    mimeType: "image/png",
-    buffer: Buffer.from(
-      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
-      "base64",
-    ),
-  });
   await page.getByRole("button", { name: "Save factual record" }).click();
   await expect(page.getByText(observation, { exact: true })).toBeVisible();
 
   const incidentCard = page.locator('[data-slot="card"]').filter({ hasText: observation });
-  await incidentCard.getByRole("button", { name: "Correct" }).click();
+  await incidentCard.getByRole("button", { name: "Add supporting files" }).click();
+  const attachmentDialog = page.getByRole("dialog", { name: "Add supporting files" });
+  await attachmentDialog.locator('input[type="file"]').setInputFiles({
+    name: attachmentName,
+    mimeType: "video/mp4",
+    buffer: Buffer.from(
+      "000000186674797069736f6d0000020069736f6d69736f32",
+      "hex",
+    ),
+  });
+  await attachmentDialog.getByRole("button", { name: "Upload files" }).click();
+  const incidentAttachment = incidentCard.getByRole("link").filter({ hasText: attachmentName });
+  await expect(incidentAttachment).toBeVisible();
+  const attachmentHref = await incidentAttachment.getAttribute("href");
+  expect(attachmentHref).toBeTruthy();
+  const attachmentResponse = await request.get(attachmentHref!);
+  expect(attachmentResponse.ok()).toBe(true);
+  expect(attachmentResponse.headers()["content-type"]).toBe("video/mp4");
+  expect(
+    (await attachmentResponse.body()).equals(
+      Buffer.from(
+        "000000186674797069736f6d0000020069736f6d69736f32",
+        "hex",
+      ),
+    ),
+  ).toBe(true);
+  await page.reload();
+  await expect(
+    page.locator('[data-slot="card"]').filter({ hasText: observation }).getByRole("link").filter({ hasText: attachmentName }),
+  ).toBeVisible();
+
+  const reloadedIncidentCard = page.locator('[data-slot="card"]').filter({ hasText: observation });
+  await reloadedIncidentCard.getByRole("button", { name: "Correct" }).click();
   await page.getByLabel("Corrected factual text").fill(correctedObservation);
   await page.getByLabel("Reason for correction").fill("Added the directly observed response time.");
   await page.getByRole("button", { name: "Append correction" }).click();
@@ -458,8 +482,10 @@ test("owner can complete the auditable record lifecycle", async ({ page, request
   await page.goto("/app/timeline");
   await page.getByLabel("Search timeline").fill("water was observed");
   const timelineCard = page.locator('[data-slot="card"]').filter({ hasText: correctedObservation });
-  const attachmentHref = await timelineCard.getByRole("link", { name: attachmentName }).getAttribute("href");
-  expect(attachmentHref).toBeTruthy();
+  await expect(timelineCard.getByRole("link", { name: attachmentName })).toHaveAttribute(
+    "href",
+    attachmentHref!,
+  );
   await timelineCard.getByRole("button", { name: "History (2)" }).click();
   await expect(page.getByText("Revision 2", { exact: true })).toBeVisible();
   await expect(page.getByText(/SHA-256:/).first()).toBeVisible();
@@ -546,14 +572,13 @@ test("owner can complete the auditable record lifecycle", async ({ page, request
   await page.getByRole("button", { name: `Revoke ${reviewerNames[0]}` }).click();
   await expect(page.getByText("revoked", { exact: true })).toBeVisible();
 
-  await page.goto("/app/timeline");
-  await page.getByLabel("Search timeline").fill("water was observed");
+  await page.goto("/app/incidents");
   const purgeCard = page.locator('[data-slot="card"]').filter({ hasText: correctedObservation });
-  await purgeCard.getByRole("button", { name: "Purge" }).click();
+  await purgeCard.getByRole("button", { name: "Remove incident" }).click();
   await page.getByLabel("Reason for deletion").fill("Permanent deletion requested for the automated lifecycle test.");
   await page.getByLabel("Type PERMANENTLY DELETE").fill("PERMANENTLY DELETE");
   await page.getByRole("button", { name: "Permanently delete" }).click();
-  await expect(page.getByText("No records match these filters.", { exact: true })).toBeVisible();
+  await expect(page.getByText(correctedObservation, { exact: true })).toHaveCount(0);
   expect((await request.get(attachmentHref!)).status()).toBe(404);
 
   await page.goto("/app/reports");

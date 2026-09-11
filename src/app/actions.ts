@@ -1,13 +1,17 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { fileTypeFromBuffer } from "file-type";
 
 import { clerkConfigured } from "@/lib/auth/identity";
 import { careStatusRecordsProvidedCare } from "@/lib/domain/care-entry-rules";
 import { isValidLocalDate, localDateInTimezone } from "@/lib/domain/dates";
-import { id, sha256 } from "@/lib/domain/integrity";
+import type {
+  AttachmentUploadClaim,
+  PreparedAttachmentUpload,
+} from "@/lib/domain/attachments";
 import {
+  attachmentUploadClaimSchema,
+  attachmentUploadRequestSchema,
   appointmentSchema,
   careEntryCorrectionSchema,
   careEntrySchema,
@@ -24,19 +28,19 @@ import {
   specialArrangementUpdateSchema,
   workspaceSettingsSchema,
 } from "@/lib/domain/schemas";
-import type { ActionResult, Attachment, Caregiver, Child, RecordType, RoutineTemplate } from "@/lib/domain/types";
+import type { ActionResult, Caregiver, Child, RoutineTemplate } from "@/lib/domain/types";
 import { getRepository, getRequestContext } from "@/lib/repository";
 import { generateEvidencePackage } from "@/lib/reporting/generate-package";
-import { deletePrivateFiles, putPrivateFile } from "@/lib/storage/private-files";
+import {
+  completeAttachmentUpload,
+  prepareAttachmentUpload,
+} from "@/lib/storage/attachment-uploads";
+import {
+  blobConfigured,
+  deletePrivateFiles,
+  putPrivateFile,
+} from "@/lib/storage/private-files";
 import { generateReportWorkflow } from "@/workflows/generate-report";
-
-const MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024;
-const ALLOWED_TYPES = new Set([
-  "image/jpeg",
-  "image/png",
-  "image/heic",
-  "application/pdf",
-]);
 
 function fail(error: unknown): ActionResult<never> {
   const message = error instanceof Error ? error.message : "Unexpected error";
@@ -69,6 +73,15 @@ function fail(error: unknown): ActionResult<never> {
       "Completed and partial records require a care provider; missed and not applicable records cannot assign one.",
     INVALID_NON_OCCURRENCE_DETAILS:
       "Missed and not applicable records cannot include duration or activity details.",
+    ATTACHMENT_TYPE:
+      "Only JPEG, PNG, HEIC, PDF, MP4, MOV, and WebM files are accepted.",
+    ATTACHMENT_TOO_LARGE:
+      "Images and PDFs must be 15 MB or smaller; videos must be 50 MB or smaller.",
+    ATTACHMENT_LIMIT: "Each record can have up to five attachments.",
+    ATTACHMENT_PATH: "The attachment upload could not be verified.",
+    ATTACHMENT_MISMATCH: "The uploaded file did not match the selected file.",
+    ATTACHMENT_MISSING: "The uploaded file could not be found.",
+    ATTACHMENT_CONFLICT: "That attachment has already been used.",
   };
   return { ok: false, error: safe[message] ?? (process.env.NODE_ENV === "production" ? "The request could not be completed." : message) };
 }
@@ -368,55 +381,57 @@ export async function generateReportAction(input: unknown): Promise<ActionResult
   }
 }
 
-export async function uploadAttachmentAction(formData: FormData): Promise<ActionResult<{ attachmentId: string }>> {
+export async function prepareAttachmentUploadAction(
+  input: unknown,
+): Promise<ActionResult<PreparedAttachmentUpload>> {
+  const parsed = attachmentUploadRequestSchema.safeParse(input);
+  if (!parsed.success) return validationFailure(parsed.error);
   try {
-    const recordType = formData.get("recordType")?.toString() as RecordType;
-    const recordId = formData.get("recordId")?.toString();
-    const file = formData.get("file");
-    if (!recordId || !["care_entry", "appointment", "incident"].includes(recordType)) {
-      return { ok: false, error: "Choose a valid record." };
-    }
-    if (!(file instanceof File) || file.size === 0) return { ok: false, error: "Choose a file." };
-    if (file.size > MAX_ATTACHMENT_BYTES) return { ok: false, error: "Files must be 15 MB or smaller." };
-
-    const bytes = new Uint8Array(await file.arrayBuffer());
-    const detected = await fileTypeFromBuffer(bytes);
-    const contentType = detected?.mime ?? "";
-    if (!ALLOWED_TYPES.has(contentType)) {
-      return { ok: false, error: "Only JPEG, PNG, HEIC, and PDF files are accepted." };
-    }
-
-    const repository = await getRepository();
     const context = await getRequestContext();
-    if (context.member.role !== "owner") throw new Error("FORBIDDEN");
-    const bundle = await repository.getRecordBundle(context, recordType, recordId);
-    if (!bundle) throw new Error("NOT_FOUND");
-    if (bundle.attachments.length >= 5) return { ok: false, error: "Each record can have up to five attachments." };
+    const prepared = await prepareAttachmentUpload(context, parsed.data);
+    return { ok: true, data: prepared };
+  } catch (error) {
+    return fail(error);
+  }
+}
 
-    const attachmentId = id("attachment");
-    const extension = detected?.ext === "jpg" ? "jpg" : detected?.ext ?? "bin";
-    const pathname = await putPrivateFile(
-      `attachments/${context.workspace.id}/${recordId}/${attachmentId}.${extension}`,
-      bytes,
-      contentType,
-    );
-    const attachment: Attachment = {
-      id: attachmentId,
-      workspaceId: context.workspace.id,
-      recordType,
-      recordId,
-      revisionId: bundle.record.currentRevisionId,
-      originalName: file.name.slice(0, 180),
-      contentType: contentType as Attachment["contentType"],
-      size: file.size,
-      sha256: sha256(bytes),
-      pathname,
-      uploadedAt: new Date().toISOString(),
-      uploadedBy: context.member.id,
-    };
-    await repository.addAttachment(context, attachment);
+export async function finalizeAttachmentUploadAction(
+  input: unknown,
+): Promise<ActionResult<{ attachmentId: string }>> {
+  const parsed = attachmentUploadClaimSchema.safeParse(input);
+  if (!parsed.success) return validationFailure(parsed.error);
+  try {
+    const context = await getRequestContext();
+    const attachment = await completeAttachmentUpload(context, parsed.data);
     refreshRecords();
-    return { ok: true, data: { attachmentId } };
+    return { ok: true, data: { attachmentId: attachment.id } };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function uploadAttachmentAction(
+  formData: FormData,
+): Promise<ActionResult<{ attachmentId: string }>> {
+  try {
+    if (blobConfigured()) {
+      return { ok: false, error: "Direct upload is required for configured private storage." };
+    }
+    const serializedClaim = formData.get("claim")?.toString();
+    const file = formData.get("file");
+    if (!(file instanceof File) || file.size === 0) return { ok: false, error: "Choose a file." };
+    if (!serializedClaim) return { ok: false, error: "The attachment upload could not be verified." };
+    const claim = attachmentUploadClaimSchema.parse(JSON.parse(serializedClaim)) as AttachmentUploadClaim;
+    if (file.size !== claim.declaredSize) throw new Error("ATTACHMENT_MISMATCH");
+    const context = await getRequestContext();
+    await putPrivateFile(
+      claim.pathname,
+      new Uint8Array(await file.arrayBuffer()),
+      claim.declaredContentType,
+    );
+    const attachment = await completeAttachmentUpload(context, claim);
+    refreshRecords();
+    return { ok: true, data: { attachmentId: attachment.id } };
   } catch (error) {
     return fail(error);
   }
