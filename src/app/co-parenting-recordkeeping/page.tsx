@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 
 import { DaybookLink } from "@/components/marketing/daybook-link";
+import { AgentAccessFeature } from "@/components/marketing/agent-access-feature";
 import { MarketingShell } from "@/components/marketing/marketing-shell";
 import { ProductPreview } from "@/components/marketing/product-preview";
 import { buttonVariants } from "@/components/ui/button";
@@ -282,6 +283,8 @@ export default async function CoParentingRecordkeepingPage() {
             </div>
           </div>
         </section>
+
+        <AgentAccessFeature />
 
         <section className="px-4 py-20 sm:px-6 sm:py-28 lg:px-8">
           <div className="mx-auto max-w-7xl overflow-hidden rounded-[2.25rem] bg-primary text-primary-foreground shadow-[0_28px_80px_rgba(23,72,60,0.18)]">

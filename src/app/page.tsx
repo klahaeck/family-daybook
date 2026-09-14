@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 
 import { buttonVariants } from "@/components/ui/button";
+import { AgentAccessFeature } from "@/components/marketing/agent-access-feature";
 import { DaybookLink } from "@/components/marketing/daybook-link";
 import { MarketingShell } from "@/components/marketing/marketing-shell";
 import { ProductPreview } from "@/components/marketing/product-preview";
@@ -159,6 +160,8 @@ export default async function MarketingHome() {
             </div>
           </div>
         </section>
+
+        <AgentAccessFeature />
 
         <section id="security" className="scroll-mt-32 px-4 py-20 sm:px-6 sm:py-28 lg:px-8">
           <div className="mx-auto max-w-7xl overflow-hidden rounded-[2.25rem] bg-primary text-primary-foreground shadow-[0_28px_80px_rgba(23,72,60,0.18)]">
