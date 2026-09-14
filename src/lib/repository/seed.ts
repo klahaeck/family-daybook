@@ -23,6 +23,10 @@ import type {
   SpecialArrangementDay,
   Workspace,
 } from "@/lib/domain/types";
+import type {
+  AgentConfirmation,
+  AgentOperationReceipt,
+} from "@/lib/agents/types";
 
 export interface ParentingState {
   workspace: Workspace;
@@ -40,6 +44,8 @@ export interface ParentingState {
   auditEvents: AuditEvent[];
   reports: ReportSnapshot[];
   tombstones: PurgeTombstone[];
+  agentOperations: AgentOperationReceipt[];
+  agentConfirmations: AgentConfirmation[];
 }
 
 function createSeedRevision(
@@ -277,5 +283,7 @@ export function createSeedState(
     auditEvents,
     reports: [],
     tombstones: [],
+    agentOperations: [],
+    agentConfirmations: [],
   };
 }

@@ -91,5 +91,21 @@ export async function ensureMongoIndexes(): Promise<void> {
     db
       .collection("specialArrangementDays")
       .createIndex({ workspaceId: 1, seriesId: 1, localDate: 1 }),
+    db.collection("agentOperations").createIndex(
+      { workspaceId: 1, memberId: 1, oauthClientId: 1, operationId: 1 },
+      { unique: true, name: "agent_operation_unique" },
+    ),
+    db.collection("agentOperations").createIndex(
+      { expiresAt: 1 },
+      { expireAfterSeconds: 0, name: "agent_operation_ttl" },
+    ),
+    db.collection("agentConfirmations").createIndex(
+      { tokenHash: 1 },
+      { unique: true, name: "agent_confirmation_token_unique" },
+    ),
+    db.collection("agentConfirmations").createIndex(
+      { expiresAt: 1 },
+      { expireAfterSeconds: 0, name: "agent_confirmation_ttl" },
+    ),
   ]);
 }

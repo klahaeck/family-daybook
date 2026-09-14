@@ -3,8 +3,12 @@
 import { revalidatePath } from "next/cache";
 
 import { clerkConfigured } from "@/lib/auth/identity";
+import {
+  createDaybookService,
+  DaybookServiceError,
+} from "@/lib/application/daybook-service";
 import { careStatusRecordsProvidedCare } from "@/lib/domain/care-entry-rules";
-import { isValidLocalDate, localDateInTimezone } from "@/lib/domain/dates";
+import { localDateInTimezone } from "@/lib/domain/dates";
 import type {
   AttachmentUploadClaim,
   PreparedAttachmentUpload,
@@ -43,6 +47,13 @@ import {
 import { generateReportWorkflow } from "@/workflows/generate-report";
 
 function fail(error: unknown): ActionResult<never> {
+  if (error instanceof DaybookServiceError) {
+    return {
+      ok: false,
+      error: "Check the highlighted fields.",
+      fieldErrors: error.fieldErrors,
+    };
+  }
   const message = error instanceof Error ? error.message : "Unexpected error";
   const safe: Record<string, string> = {
     FORBIDDEN: "You do not have permission to perform this action.",
@@ -106,14 +117,16 @@ export async function createCareEntryAction(input: unknown): Promise<ActionResul
   try {
     const repository = await getRepository();
     const context = await getRequestContext();
-    const today = localDateInTimezone(new Date(), context.workspace.timezone);
-    if (parsed.data.localDate > today) {
-      return { ok: false, error: "Care records cannot be added to a future date." };
-    }
-    if (localDateInTimezone(new Date(parsed.data.occurredAt), context.workspace.timezone) !== parsed.data.localDate) {
-      return { ok: false, error: "The occurrence time must fall on the selected log date." };
-    }
-    const entry = await repository.createCareEntry(context, parsed.data);
+    const { templateItemId, arrangementTaskId, taskLabel } = parsed.data;
+    const source = templateItemId
+      ? ({ kind: "routine", templateItemId } as const)
+      : arrangementTaskId
+        ? ({ kind: "special_arrangement", arrangementTaskId } as const)
+        : ({ kind: "custom", label: taskLabel } as const);
+    const entry = await createDaybookService(repository, context).createCareEntry({
+      ...parsed.data,
+      source,
+    });
     refreshRecords();
     return { ok: true, data: { id: entry.id } };
   } catch (error) {
@@ -129,25 +142,10 @@ export async function correctCareEntryAction(
   try {
     const repository = await getRepository();
     const context = await getRequestContext();
-    const bundle = await repository.getRecordBundle(context, "care_entry", parsed.data.recordId);
-    if (!bundle || !("dailyLogId" in bundle.record)) throw new Error("NOT_FOUND");
-
-    const today = localDateInTimezone(new Date(), context.workspace.timezone);
-    const originalDate = localDateInTimezone(
-      new Date(bundle.record.occurredAt),
-      context.workspace.timezone,
-    );
-    const correctedDate = localDateInTimezone(
-      new Date(parsed.data.occurredAt),
-      context.workspace.timezone,
-    );
-    if (correctedDate > today) {
-      return { ok: false, error: "Care records cannot be moved to a future date." };
-    }
-    if (correctedDate !== originalDate) {
-      return { ok: false, error: "The corrected time must stay on the original log date." };
-    }
-    const revision = await repository.correctCareEntry(context, parsed.data);
+    const revision = await createDaybookService(
+      repository,
+      context,
+    ).correctCareEntry(parsed.data);
     refreshRecords();
     return { ok: true, data: { revisionId: revision.id } };
   } catch (error) {
@@ -163,25 +161,9 @@ export async function updateCareEntryAction(
   try {
     const repository = await getRepository();
     const context = await getRequestContext();
-    const bundle = await repository.getRecordBundle(context, "care_entry", parsed.data.recordId);
-    if (!bundle || !("dailyLogId" in bundle.record)) throw new Error("NOT_FOUND");
-
-    const today = localDateInTimezone(new Date(), context.workspace.timezone);
-    const originalDate = localDateInTimezone(
-      new Date(bundle.record.occurredAt),
-      context.workspace.timezone,
+    const entry = await createDaybookService(repository, context).updateCareEntry(
+      parsed.data,
     );
-    const updatedDate = localDateInTimezone(
-      new Date(parsed.data.occurredAt),
-      context.workspace.timezone,
-    );
-    if (updatedDate > today) {
-      return { ok: false, error: "Care records cannot be moved to a future date." };
-    }
-    if (updatedDate !== originalDate) {
-      return { ok: false, error: "The updated time must stay on the original log date." };
-    }
-    const entry = await repository.updateCareEntry(context, parsed.data);
     refreshRecords();
     return { ok: true, data: { id: entry.id } };
   } catch (error) {
@@ -200,7 +182,7 @@ export async function updateCareEntryNotesAction(
     const bundle = await repository.getRecordBundle(context, "care_entry", parsed.data.recordId);
     if (!bundle || !("dailyLogId" in bundle.record)) throw new Error("NOT_FOUND");
     const recordsProvidedCare = careStatusRecordsProvidedCare(bundle.record.status);
-    const entry = await repository.updateCareEntry(context, {
+    const entry = await createDaybookService(repository, context).updateCareEntry({
       recordId: bundle.record.id,
       childIds: bundle.record.childIds,
       caregiverIds: recordsProvidedCare ? bundle.record.caregiverIds : [],
@@ -225,11 +207,9 @@ export async function updateDailyLogNotesAction(
   try {
     const repository = await getRepository();
     const context = await getRequestContext();
-    const today = localDateInTimezone(new Date(), context.workspace.timezone);
-    if (parsed.data.localDate > today) {
-      return { ok: false, error: "Day notes cannot be added to a future date." };
-    }
-    const log = await repository.updateDailyLogNotes(context, parsed.data);
+    const log = await createDaybookService(repository, context).updateDayNotes(
+      parsed.data,
+    );
     refreshRecords();
     return { ok: true, data: { notes: log.notes } };
   } catch (error) {
@@ -283,10 +263,9 @@ export async function finalizeDailyLogAction(localDate: string): Promise<ActionR
   try {
     const repository = await getRepository();
     const context = await getRequestContext();
-    if (!isValidLocalDate(localDate) || localDate > localDateInTimezone(new Date(), context.workspace.timezone)) {
-      return { ok: false, error: "Choose today or an earlier valid date." };
-    }
-    const log = await repository.finalizeDailyLog(context, localDate);
+    const log = await createDaybookService(repository, context).finalizeDay(
+      localDate,
+    );
     refreshRecords();
     return { ok: true, data: { finalizedAt: log.finalizedAt } };
   } catch (error) {

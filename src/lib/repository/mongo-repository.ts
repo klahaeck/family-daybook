@@ -52,6 +52,7 @@ import {
   arrangementAtIncludedRevision,
   arrangementForChildren,
   createNextRoutineItems,
+  dayVersionFor,
   recordPayload,
   requireOwner,
   toTimelineItems,
@@ -63,7 +64,13 @@ import type {
   RecordBundle,
   ReportSource,
   RequestContext,
+  VersionedCareEntry,
+  VersionedDailyLog,
 } from "./repository";
+import type {
+  AgentConfirmation,
+  AgentOperationReceipt,
+} from "@/lib/agents/types";
 
 type AppDocument<T> = T & Document;
 
@@ -187,6 +194,17 @@ export class MongoParentingRepository implements ParentingRepository {
     }
 
     if (!member) {
+      const revoked = await members.findOne({
+        status: "revoked",
+        $or: [
+          { authUserId: identity.authUserId },
+          { email: normalizedEmail },
+        ],
+      });
+      if (revoked) throw new Error("FORBIDDEN");
+    }
+
+    if (!member) {
       try {
         await this.bootstrap(identity);
       } catch (error) {
@@ -243,7 +261,15 @@ export class MongoParentingRepository implements ParentingRepository {
     });
   }
 
-  async getDashboard(context: RequestContext, date: string) {
+  async getAgentOperationResult<T>(context: RequestContext) {
+    return this.agentReplay<T>(context);
+  }
+
+  async getDashboard(
+    context: RequestContext,
+    date: string,
+    createIfMissing = true,
+  ) {
     const [children, caregivers, storedEntries] = await Promise.all([
       (await col<Child>("children"))
         .find({ workspaceId: context.workspace.id, active: true })
@@ -260,7 +286,20 @@ export class MongoParentingRepository implements ParentingRepository {
     const entries = storedEntries.map((entry) =>
       withCurrentLateEntryStatus(entry, context.workspace.timezone),
     );
-    const dailyLog = await this.ensureDailyLog(context, date);
+    const dailyLog =
+      context.member.role === "reviewer"
+        ? await (await col<DailyLog>("dailyLogs")).findOne({
+            workspaceId: context.workspace.id,
+            localDate: date,
+            status: "finalized",
+          })
+        : createIfMissing
+          ? await this.ensureDailyLog(context, date)
+          : await (await col<DailyLog>("dailyLogs")).findOne({
+              workspaceId: context.workspace.id,
+              localDate: date,
+            });
+    if (!dailyLog) throw new Error("NOT_FOUND");
     const dailyTemplate = await (await col<RoutineTemplate>("routineTemplates")).findOne({
       workspaceId: context.workspace.id,
       version: dailyLog.templateVersion,
@@ -500,6 +539,60 @@ export class MongoParentingRepository implements ParentingRepository {
     });
   }
 
+  async getDayVersion(context: RequestContext, localDate: string) {
+    const log = await (await col<DailyLog>("dailyLogs")).findOne({
+      workspaceId: context.workspace.id,
+      localDate,
+      ...(context.member.role === "reviewer" ? { status: "finalized" } : {}),
+    });
+    if (!log) throw new Error("NOT_FOUND");
+    const entries = await (await col<CareEntry>("careEntries"))
+      .find({ workspaceId: context.workspace.id, dailyLogId: log.id })
+      .toArray();
+    const revisionIds = entries.map((entry) => entry.currentRevisionId);
+    const revisions = revisionIds.length
+      ? await (await col<RecordRevision>("recordRevisions"))
+          .find({ workspaceId: context.workspace.id, id: { $in: revisionIds } })
+          .toArray()
+      : [];
+    return dayVersionFor(toPlainData(log), toPlainData(entries), toPlainData(revisions));
+  }
+
+  async createAgentConfirmation<T>(
+    context: RequestContext,
+    confirmation: AgentConfirmation,
+    result: T,
+  ): Promise<T> {
+    requireOwner(context.member.role);
+    if (
+      confirmation.workspaceId !== context.workspace.id ||
+      confirmation.memberId !== context.member.id ||
+      confirmation.oauthClientId !== context.agent?.oauthClientId
+    ) {
+      throw new Error("FORBIDDEN");
+    }
+    await this.agentMutation(context, async (session) => {
+      await (await col<AgentConfirmation>("agentConfirmations")).insertOne(
+        confirmation,
+        { session },
+      );
+      return this.redactConfirmationHandle(result);
+    });
+    return result;
+  }
+
+  async getAgentConfirmation(context: RequestContext, tokenHash: string) {
+    const confirmation = await (
+      await col<AgentConfirmation>("agentConfirmations")
+    ).findOne({
+      tokenHash,
+      workspaceId: context.workspace.id,
+      memberId: context.member.id,
+      oauthClientId: context.agent?.oauthClientId,
+    });
+    return confirmation ?? null;
+  }
+
   async getReportSource(
     context: RequestContext,
     reportId: string,
@@ -587,6 +680,8 @@ export class MongoParentingRepository implements ParentingRepository {
 
   async createCareEntry(context: RequestContext, input: CareEntryInput) {
     requireOwner(context.member.role);
+    const replay = await this.agentReplay<VersionedCareEntry>(context);
+    if (replay.found) return replay.result;
     const log = await this.ensureDailyLog(context, input.localDate);
     if (input.templateItemId && input.arrangementTaskId) {
       throw new Error("INVALID_CARE_TASK");
@@ -653,16 +748,18 @@ export class MongoParentingRepository implements ParentingRepository {
     for (const field of ["durationMinutes", "activityType", "notes"] as const) {
       if (entry[field] === undefined) delete entry[field];
     }
-    await this.transaction(async (session) => {
+    return this.agentMutation(context, async (session) => {
       await (await col<CareEntry>("careEntries")).insertOne(entry, { session });
       await (await col<RecordRevision>("recordRevisions")).insertOne(revision, { session });
       await this.insertAudit(context, "created", "care_entry", entry.id, session);
+      return toPlainData({ ...entry, recordVersion: revision.hash });
     });
-    return toPlainData(entry);
   }
 
   async updateCareEntry(context: RequestContext, input: CareEntryUpdateInput) {
     requireOwner(context.member.role);
+    const replay = await this.agentReplay<VersionedCareEntry>(context);
+    if (replay.found) return replay.result;
     assertValidCareEntryDetails(input);
     const entry = await (await col<CareEntry>("careEntries")).findOne({
       id: input.recordId,
@@ -674,6 +771,12 @@ export class MongoParentingRepository implements ParentingRepository {
       workspaceId: context.workspace.id,
     });
     if (!revision) throw new Error("REVISION_NOT_FOUND");
+    if (
+      context.agent?.expectedRecordVersion &&
+      context.agent.expectedRecordVersion !== revision.hash
+    ) {
+      throw new Error("VERSION_CONFLICT");
+    }
     const previousRevision = revision.previousRevisionId
       ? await (await col<RecordRevision>("recordRevisions")).findOne({
           id: revision.previousRevisionId,
@@ -723,7 +826,7 @@ export class MongoParentingRepository implements ParentingRepository {
       else setFields[field] = update[field];
     }
 
-    await this.transaction(async (session) => {
+    return this.agentMutation(context, async (session) => {
       const openLog = await (await col<DailyLog>("dailyLogs")).updateOne(
         {
           id: entry.dailyLogId,
@@ -734,29 +837,48 @@ export class MongoParentingRepository implements ParentingRepository {
         { session },
       );
       if (!openLog.matchedCount) throw new Error("DAY_FINALIZED");
-      await (await col<RecordRevision>("recordRevisions")).updateOne(
-        { id: revision.id, workspaceId: context.workspace.id },
+      const revisionUpdate = await (
+        await col<RecordRevision>("recordRevisions")
+      ).updateOne(
+        {
+          id: revision.id,
+          workspaceId: context.workspace.id,
+          hash: revision.hash,
+        },
         { $set: { payload, authorId: context.member.id, recordedAt: savedAt, hash } },
         { session },
       );
-      await (await col<CareEntry>("careEntries")).updateOne(
-        { id: entry.id, workspaceId: context.workspace.id },
+      if (!revisionUpdate.matchedCount) throw new Error("VERSION_CONFLICT");
+      const entryUpdate = await (await col<CareEntry>("careEntries")).updateOne(
+        {
+          id: entry.id,
+          workspaceId: context.workspace.id,
+          currentRevisionId: revision.id,
+        },
         {
           $set: setFields,
           ...(Object.keys(unsetFields).length ? { $unset: unsetFields } : {}),
         },
         { session },
       );
+      if (!entryUpdate.matchedCount) throw new Error("VERSION_CONFLICT");
       await this.insertAudit(context, "updated", "care_entry", entry.id, session, {
         revisionNumber: revision.revisionNumber,
       });
+      return toPlainData({
+        ...entry,
+        ...update,
+        occurredAt,
+        lateEntry,
+        recordVersion: hash,
+      });
     });
-
-    return toPlainData({ ...entry, ...update, occurredAt, lateEntry });
   }
 
   async correctCareEntry(context: RequestContext, input: CareEntryCorrectionInput) {
     requireOwner(context.member.role);
+    const replay = await this.agentReplay<RecordRevision>(context);
+    if (replay.found) return replay.result;
     assertValidCareEntryDetails(input);
     const entry = await (await col<CareEntry>("careEntries")).findOne({
       id: input.recordId,
@@ -774,6 +896,12 @@ export class MongoParentingRepository implements ParentingRepository {
       workspaceId: context.workspace.id,
     });
     if (!previous) throw new Error("REVISION_NOT_FOUND");
+    if (
+      context.agent?.expectedRecordVersion &&
+      context.agent.expectedRecordVersion !== previous.hash
+    ) {
+      throw new Error("CONFIRMATION_STALE");
+    }
 
     const recordedAt = new Date().toISOString();
     const occurredAt = new Date(input.occurredAt).toISOString();
@@ -828,16 +956,27 @@ export class MongoParentingRepository implements ParentingRepository {
       else setFields[field] = correction[field];
     }
 
-    await this.transaction(async (session) => {
+    return this.agentMutation(context, async (session) => {
+      await this.consumeAgentConfirmation(
+        context,
+        entry.id,
+        previous.hash,
+        session,
+      );
       await (await col<RecordRevision>("recordRevisions")).insertOne(revision, { session });
-      await (await col<CareEntry>("careEntries")).updateOne(
-        { id: entry.id, workspaceId: context.workspace.id },
+      const entryUpdate = await (await col<CareEntry>("careEntries")).updateOne(
+        {
+          id: entry.id,
+          workspaceId: context.workspace.id,
+          currentRevisionId: previous.id,
+        },
         {
           $set: setFields,
           ...(Object.keys(unsetFields).length ? { $unset: unsetFields } : {}),
         },
         { session },
       );
+      if (!entryUpdate.matchedCount) throw new Error("CONFIRMATION_STALE");
       await this.insertAudit(
         context,
         "corrected",
@@ -846,8 +985,8 @@ export class MongoParentingRepository implements ParentingRepository {
         session,
         { revisionNumber: revision.revisionNumber },
       );
+      return toPlainData(revision);
     });
-    return toPlainData(revision);
   }
 
   async createAppointment(context: RequestContext, input: AppointmentInput) {
@@ -954,8 +1093,11 @@ export class MongoParentingRepository implements ParentingRepository {
     input: DailyLogNotesInput,
   ) {
     requireOwner(context.member.role);
+    const replay = await this.agentReplay<VersionedDailyLog>(context);
+    if (replay.found) return replay.result;
     const log = await this.ensureDailyLog(context, input.localDate);
-    await this.transaction(async (session) => {
+    return this.agentMutation(context, async (session) => {
+      await this.assertDayVersion(context, log, "VERSION_CONFLICT", session);
       const update = input.notes
         ? { $set: { notes: input.notes } }
         : { $unset: { notes: "" } };
@@ -970,31 +1112,58 @@ export class MongoParentingRepository implements ParentingRepository {
       );
       if (!openLog.matchedCount) throw new Error("DAY_FINALIZED");
       await this.insertAudit(context, "updated", "daily_log", log.id, session);
-    });
-    return toPlainData({
-      ...log,
-      notes: input.notes || undefined,
+      const resultLog = {
+        ...log,
+        notes: input.notes || undefined,
+      };
+      return toPlainData({
+        ...resultLog,
+        dayVersion: await this.calculateDayVersion(
+          context,
+          resultLog,
+          session,
+        ),
+      });
     });
   }
 
   async finalizeDailyLog(context: RequestContext, localDate: string) {
     requireOwner(context.member.role);
+    const replay = await this.agentReplay<VersionedDailyLog>(context);
+    if (replay.found) return replay.result;
     const log = await this.ensureDailyLog(context, localDate);
-    if (log.status === "finalized") return toPlainData(log);
     const finalizedAt = new Date().toISOString();
-    await this.transaction(async (session) => {
+    return this.agentMutation(context, async (session) => {
+      const currentVersion = await this.assertDayVersion(
+        context,
+        log,
+        "CONFIRMATION_STALE",
+        session,
+      );
+      await this.consumeAgentConfirmation(context, log.id, currentVersion, session);
+      if (log.status === "finalized") {
+        return toPlainData({ ...log, dayVersion: currentVersion });
+      }
       await (await col<DailyLog>("dailyLogs")).updateOne(
-        { id: log.id },
+        { id: log.id, workspaceId: context.workspace.id, status: "open" },
         { $set: { status: "finalized", finalizedAt, finalizedBy: context.member.id } },
         { session },
       );
       await this.insertAudit(context, "finalized", "daily_log", log.id, session);
-    });
-    return toPlainData({
-      ...log,
-      status: "finalized" as const,
-      finalizedAt,
-      finalizedBy: context.member.id,
+      const resultLog = {
+        ...log,
+        status: "finalized" as const,
+        finalizedAt,
+        finalizedBy: context.member.id,
+      };
+      return toPlainData({
+        ...resultLog,
+        dayVersion: await this.calculateDayVersion(
+          context,
+          resultLog,
+          session,
+        ),
+      });
     });
   }
 
@@ -1707,7 +1876,26 @@ export class MongoParentingRepository implements ParentingRepository {
       { sort: { occurredAt: -1 }, session },
     );
     const occurredAt = new Date().toISOString();
-    const base = { actorId: context.member.id, action, targetType, targetId, occurredAt, metadata };
+    const agentMetadata = context.agent
+      ? {
+          source: context.agent.source,
+          oauthClientId: context.agent.oauthClientId,
+          ...(context.agent.operationId
+            ? { operationId: context.agent.operationId }
+            : {}),
+          ...(context.agent.toolName ? { toolName: context.agent.toolName } : {}),
+        }
+      : {};
+    const combinedMetadata = { ...metadata, ...agentMetadata };
+    const base = {
+      actorId: context.member.id,
+      action,
+      targetType,
+      targetId,
+      occurredAt,
+      metadata:
+        Object.keys(combinedMetadata).length > 0 ? combinedMetadata : undefined,
+    };
     const previousHash = suppliedPreviousHash ?? previous?.eventHash;
     await audits.insertOne(
       {
@@ -1727,6 +1915,207 @@ export class MongoParentingRepository implements ParentingRepository {
     if (type === "appointment")
       return (await col<Appointment>("appointments")).findOne({ id: idValue, workspaceId });
     return (await col<Incident>("incidents")).findOne({ id: idValue, workspaceId });
+  }
+
+  private async assertDayVersion(
+    context: RequestContext,
+    log: DailyLog,
+    errorCode: "VERSION_CONFLICT" | "CONFIRMATION_STALE",
+    session: ClientSession,
+  ): Promise<string> {
+    const currentLog = await (await col<DailyLog>("dailyLogs")).findOne(
+      { id: log.id, workspaceId: context.workspace.id },
+      { session },
+    );
+    if (!currentLog) throw new Error("NOT_FOUND");
+    const version = await this.calculateDayVersion(
+      context,
+      toPlainData(currentLog),
+      session,
+    );
+    if (
+      context.agent?.expectedDayVersion &&
+      context.agent.expectedDayVersion !== version
+    ) {
+      throw new Error(errorCode);
+    }
+    return version;
+  }
+
+  private async calculateDayVersion(
+    context: RequestContext,
+    log: DailyLog,
+    session: ClientSession,
+  ): Promise<string> {
+    const entries = await (await col<CareEntry>("careEntries"))
+      .find(
+        { workspaceId: context.workspace.id, dailyLogId: log.id },
+        { session },
+      )
+      .toArray();
+    const revisionIds = entries.map((entry) => entry.currentRevisionId);
+    const revisions = revisionIds.length
+      ? await (await col<RecordRevision>("recordRevisions"))
+          .find(
+            {
+              workspaceId: context.workspace.id,
+              id: { $in: revisionIds },
+            },
+            { session },
+          )
+          .toArray()
+      : [];
+    return dayVersionFor(
+      log,
+      toPlainData(entries),
+      toPlainData(revisions),
+    );
+  }
+
+  private async consumeAgentConfirmation(
+    context: RequestContext,
+    targetId: string,
+    baseVersion: string,
+    session: ClientSession,
+  ): Promise<void> {
+    const agent = context.agent;
+    if (!agent?.confirmationTokenHash) return;
+    const confirmations = await col<AgentConfirmation>("agentConfirmations");
+    const confirmation = await confirmations.findOne(
+      {
+        tokenHash: agent.confirmationTokenHash,
+        workspaceId: context.workspace.id,
+        memberId: context.member.id,
+        oauthClientId: agent.oauthClientId,
+        kind: agent.confirmationKind,
+        targetId,
+      },
+      { session },
+    );
+    if (!confirmation || confirmation.expiresAt.getTime() <= Date.now()) {
+      throw new Error("CONFIRMATION_EXPIRED");
+    }
+    if (confirmation.baseVersion !== baseVersion) {
+      throw new Error("CONFIRMATION_STALE");
+    }
+    if (confirmation.consumedByOperationId) {
+      if (confirmation.consumedByOperationId !== agent.operationId) {
+        throw new Error("CONFIRMATION_EXPIRED");
+      }
+      return;
+    }
+    const consumed = await confirmations.updateOne(
+      {
+        id: confirmation.id,
+        tokenHash: confirmation.tokenHash,
+        consumedByOperationId: { $exists: false },
+      },
+      {
+        $set: {
+          consumedAt: new Date(),
+          consumedByOperationId: agent.operationId,
+        },
+      },
+      { session },
+    );
+    if (!consumed.modifiedCount) throw new Error("CONFIRMATION_EXPIRED");
+  }
+
+  private async agentReplay<T>(
+    context: RequestContext,
+    session?: ClientSession,
+  ): Promise<{ found: true; result: T } | { found: false }> {
+    const agent = context.agent;
+    if (!agent?.operationId) return { found: false };
+    if (!agent.toolName || !agent.inputHash) throw new Error("VALIDATION_ERROR");
+    const existing = await (
+      await col<AgentOperationReceipt>("agentOperations")
+    ).findOne(
+      {
+        workspaceId: context.workspace.id,
+        memberId: context.member.id,
+        oauthClientId: agent.oauthClientId,
+        operationId: agent.operationId,
+      },
+      { session },
+    );
+    if (!existing) return { found: false };
+    if (
+      existing.toolName !== agent.toolName ||
+      existing.inputHash !== agent.inputHash
+    ) {
+      throw new Error("IDEMPOTENCY_CONFLICT");
+    }
+    return { found: true, result: toPlainData(existing.result) as T };
+  }
+
+  private redactConfirmationHandle<T>(result: T): T {
+    if (!result || typeof result !== "object" || Array.isArray(result)) return result;
+    const redacted = { ...(result as Record<string, unknown>) };
+    delete redacted.confirmationHandle;
+    return redacted as T;
+  }
+
+  private async agentMutation<T>(
+    context: RequestContext,
+    work: (session: ClientSession) => Promise<T>,
+  ): Promise<T> {
+    const initialReplay = await this.agentReplay<T>(context);
+    if (initialReplay.found) return initialReplay.result;
+    const agent = context.agent;
+    if (!agent?.operationId) {
+      let result!: T;
+      await this.transaction(async (session) => {
+        result = await work(session);
+      });
+      return result;
+    }
+    if (!agent.toolName || !agent.inputHash) throw new Error("VALIDATION_ERROR");
+    const operationId = agent.operationId;
+    const toolName = agent.toolName;
+    const inputHash = agent.inputHash;
+    const client = await getMongoClient();
+    try {
+      return await client.withSession(async (session) => {
+        let result!: T;
+        await session.withTransaction(async () => {
+          const replay = await this.agentReplay<T>(context, session);
+          if (replay.found) {
+            result = replay.result;
+            return;
+          }
+          result = await work(session);
+          const now = new Date();
+          await (await col<AgentOperationReceipt>("agentOperations")).insertOne(
+            {
+              id: id("agent_operation"),
+              workspaceId: context.workspace.id,
+              memberId: context.member.id,
+              oauthClientId: agent.oauthClientId,
+              operationId,
+              toolName,
+              inputHash,
+              result,
+              createdAt: now,
+              expiresAt: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000),
+            },
+            { session },
+          );
+        });
+        return result;
+      });
+    } catch (error) {
+      if (
+        typeof error === "object" &&
+        error !== null &&
+        "code" in error &&
+        error.code === 11000
+      ) {
+        const replay = await this.agentReplay<T>(context);
+        if (replay.found) return replay.result;
+      }
+      throw error;
+    }
   }
 
   private async transaction(work: (session: ClientSession) => Promise<void>) {

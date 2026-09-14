@@ -241,4 +241,54 @@ describe.skipIf(!configured)("MongoDB repository integration", () => {
       ),
     ).toHaveLength(2);
   });
+
+  it("runs the shared Daybook service with transactional operation replay", async () => {
+    const [{ MongoParentingRepository }, { createDaybookService }, integrity] =
+      await Promise.all([
+        import("@/lib/repository/mongo-repository"),
+        import("@/lib/application/daybook-service"),
+        import("@/lib/domain/integrity"),
+      ]);
+    const repository = new MongoParentingRepository();
+    const base = await repository.resolveContext({
+      authUserId: "mongo-agent-owner",
+      email: "mongo-agent-owner@example.test",
+      displayName: "Mongo Agent Owner",
+      mfaEnabled: true,
+      demo: false,
+    });
+    const localDate = "2026-09-14";
+    const dashboard = await repository.getDashboard(base, localDate);
+    const input = {
+      operationId: "db0a04f7-8c16-4a85-8ea4-815210c49157",
+      localDate,
+      source: { kind: "custom" as const, label: "Packed lunch" },
+      childIds: [dashboard.children[0].id],
+      caregiverIds: [dashboard.caregivers[0].id],
+      status: "completed" as const,
+      occurredAt: "2026-09-14T17:00:00.000Z",
+      notes: "Packed a sandwich and fruit.",
+    };
+    const context = {
+      ...base,
+      agent: {
+        source: "mcp" as const,
+        oauthClientId: "https://approved-client.example/mcp.json",
+        toolName: "create_care_entry",
+        operationId: input.operationId,
+        inputHash: integrity.sha256(integrity.canonicalJson(input)),
+      },
+    };
+    const service = createDaybookService(repository, context);
+    const first = await service.createCareEntry(input);
+    const replay = await service.createCareEntry(input);
+
+    expect(replay).toEqual(first);
+    expect(first.recordVersion).toHaveLength(64);
+    expect(
+      (await repository.getDashboard(base, localDate)).recentEntries.filter(
+        (entry) => entry.id === first.id,
+      ),
+    ).toHaveLength(1);
+  });
 });

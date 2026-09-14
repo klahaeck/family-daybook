@@ -21,6 +21,7 @@ It is a recordkeeping tool, not legal advice, an emergency service, or a guarant
 - Vercel Workflow report generation with PDF, original files, JSON manifest, and checksum ZIP
 - Configurable owner-only hard purge with typed confirmation and content-free tombstones
 - MongoDB Atlas persistence plus a clearly marked in-memory local demo mode
+- OAuth-protected, stateless Streamable HTTP MCP tools for authorized daily care records at `/mcp`
 
 ## Local development
 
@@ -85,3 +86,25 @@ The repository adapter uses MongoDB when `MONGODB_URI` is configured. The develo
 The public `/pricing` page renders Clerk's user Pricing Table. Private workspace requests verify the workspace owner's Clerk Billing Subscription on the server, including Route Handlers and Server Actions. The default configuration accepts the paid subscriber Plan (`general`) or an explicit `complimentaryAccess: true` value in the owner's Clerk private metadata. The hidden default Free Plan (`free_user`) alone does not grant application access. Override the paid-plan allowlist with the comma-separated `CLERK_ALLOWED_PLAN_SLUGS` environment variable if Plan slugs differ between Clerk instances.
 
 Invited reviewers inherit the workspace owner's billing access. A reviewer is never required to buy a separate Plan, and the server resolves the owner before checking Clerk so this rule applies to pages, API reads, downloads, and mutations.
+
+## Authorized MCP access
+
+The remote MCP endpoint is `https://YOUR_DEPLOYMENT/mcp`. It uses stateless Streamable HTTP, Clerk OAuth, the same MongoDB workspace membership and billing checks as the web app, and these custom Clerk scopes:
+
+- `daybook:read` for context, days, records, and revision history
+- `daybook:write` for open-day entries/notes and confirmed finalized-record corrections
+- `daybook:finalize` for previewing and confirming day finalization
+
+Configure Clerk before connecting a client:
+
+1. Add all three custom scopes in the Clerk Dashboard.
+2. Keep the OAuth consent screen enabled and select opaque access tokens so revocation takes effect promptly.
+3. Enable Client ID Metadata Documents (CIMD) for approved clients only. Leave open Dynamic Client Registration disabled.
+4. Approve each MCP host explicitly. For v1 hosts that omit a scope request, configure all three Daybook scopes as that client's defaults.
+5. Register the exact production resource URL, including `/mcp`, and smoke-test one approved client after deployment.
+
+OAuth discovery is published at `/.well-known/oauth-protected-resource/mcp` and `/.well-known/oauth-authorization-server`. Every tool derives the Clerk user, workspace, member, and OAuth client from the bearer token; none can be supplied as arguments. Owners may mutate according to granted scopes. Reviewers remain read-only and can retrieve only finalized care days and records.
+
+MCP is deliberately unavailable unless both Clerk and MongoDB are configured. The unauthenticated in-memory demo is never exposed. Mutations require UUID operation IDs, version-bound updates, and five-minute one-time confirmations for finalization and finalized-record corrections.
+
+The integration follows the [MCP 2026-07-28 transport model](https://blog.modelcontextprotocol.io/posts/2026-07-28/) and [Clerk's Next.js MCP guidance](https://clerk.com/docs/nextjs/guides/ai/mcp/build-mcp-server).

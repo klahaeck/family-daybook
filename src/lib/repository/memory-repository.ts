@@ -48,6 +48,7 @@ import {
   arrangementAtIncludedRevision,
   arrangementForChildren,
   createNextRoutineItems,
+  dayVersionFor,
   recordPayload,
   requireOwner,
   toTimelineItems,
@@ -58,8 +59,14 @@ import type {
   RecordBundle,
   ReportSource,
   RequestContext,
+  VersionedCareEntry,
+  VersionedDailyLog,
 } from "./repository";
 import type { Identity } from "@/lib/auth/identity";
+import type {
+  AgentConfirmation,
+  AgentOperationReceipt,
+} from "@/lib/agents/types";
 
 declare global {
   var __parentingLogState: ParentingState | undefined;
@@ -192,13 +199,19 @@ function normalizeArrangementFields(
 export class MemoryParentingRepository implements ParentingRepository {
   async resolveContext(identity: Identity): Promise<RequestContext> {
     const data = state();
+    const matchingMember = data.members.find(
+      (item) =>
+        item.authUserId === identity.authUserId ||
+        item.email.toLowerCase() === identity.email.toLowerCase(),
+    );
+    if (matchingMember?.status === "revoked") throw new Error("FORBIDDEN");
     const member =
-      data.members.find(
-        (item) =>
-          item.status === "active" &&
-          (item.authUserId === identity.authUserId ||
-            item.email.toLowerCase() === identity.email.toLowerCase()),
-      ) ?? data.members.find((item) => item.role === "owner" && item.status === "active");
+      (matchingMember?.status === "active" ? matchingMember : undefined) ??
+      (identity.demo
+        ? data.members.find(
+            (item) => item.role === "owner" && item.status === "active",
+          )
+        : undefined);
     if (!member) throw new Error("FORBIDDEN");
     const owner = data.members.find(
       (item) => item.id === data.workspace.ownerId && item.status === "active",
@@ -212,9 +225,25 @@ export class MemoryParentingRepository implements ParentingRepository {
     };
   }
 
-  async getDashboard(context: RequestContext, date: string) {
+  async getAgentOperationResult<T>(context: RequestContext) {
+    return this.agentReplay<T>(context);
+  }
+
+  async getDashboard(
+    context: RequestContext,
+    date: string,
+    createIfMissing = true,
+  ) {
     const data = state();
-    const dailyLog = ensureDailyLog(data, date);
+    const dailyLog =
+      context.member.role === "reviewer"
+        ? data.dailyLogs.find(
+            (log) => log.localDate === date && log.status === "finalized",
+          )
+        : createIfMissing
+          ? ensureDailyLog(data, date)
+          : data.dailyLogs.find((log) => log.localDate === date);
+    if (!dailyLog) throw new Error("NOT_FOUND");
     const entries = data.careEntries.map((entry) =>
       withCurrentLateEntryStatus(entry, context.workspace.timezone),
     );
@@ -429,6 +458,51 @@ export class MemoryParentingRepository implements ParentingRepository {
     };
   }
 
+  async getDayVersion(context: RequestContext, localDate: string) {
+    const data = state();
+    const log = data.dailyLogs.find(
+      (item) =>
+        item.workspaceId === context.workspace.id && item.localDate === localDate,
+    );
+    if (!log) throw new Error("NOT_FOUND");
+    if (context.member.role === "reviewer" && log.status !== "finalized") {
+      throw new Error("NOT_FOUND");
+    }
+    return dayVersionFor(log, data.careEntries, data.revisions);
+  }
+
+  async createAgentConfirmation<T>(
+    context: RequestContext,
+    confirmation: AgentConfirmation,
+    result: T,
+  ): Promise<T> {
+    requireOwner(context.member.role);
+    if (
+      confirmation.workspaceId !== context.workspace.id ||
+      confirmation.memberId !== context.member.id ||
+      confirmation.oauthClientId !== context.agent?.oauthClientId
+    ) {
+      throw new Error("FORBIDDEN");
+    }
+    const replay = this.agentReplay<T>(context);
+    if (replay.found) return result;
+    state().agentConfirmations.push(confirmation);
+    this.recordAgentOperation(context, this.redactConfirmationHandle(result));
+    return result;
+  }
+
+  async getAgentConfirmation(context: RequestContext, tokenHash: string) {
+    return (
+      state().agentConfirmations.find(
+        (item) =>
+          item.tokenHash === tokenHash &&
+          item.workspaceId === context.workspace.id &&
+          item.memberId === context.member.id &&
+          item.oauthClientId === context.agent?.oauthClientId,
+      ) ?? null
+    );
+  }
+
   async getReportSource(
     _context: RequestContext,
     reportId: string,
@@ -490,6 +564,8 @@ export class MemoryParentingRepository implements ParentingRepository {
 
   async createCareEntry(context: RequestContext, input: CareEntryInput) {
     requireOwner(context.member.role);
+    const replay = this.agentReplay<VersionedCareEntry>(context);
+    if (replay.found) return replay.result;
     const data = state();
     const recordedAt = new Date().toISOString();
     const dailyLog = ensureDailyLog(data, input.localDate);
@@ -557,11 +633,15 @@ export class MemoryParentingRepository implements ParentingRepository {
     }
     data.careEntries.push(entry);
     await this.audit(context, "created", "care_entry", entry.id);
-    return entry;
+    const result = { ...entry, recordVersion: revision.hash };
+    this.recordAgentOperation(context, result);
+    return result;
   }
 
   async updateCareEntry(context: RequestContext, input: CareEntryUpdateInput) {
     requireOwner(context.member.role);
+    const replay = this.agentReplay<VersionedCareEntry>(context);
+    if (replay.found) return replay.result;
     assertValidCareEntryDetails(input);
     const data = state();
     const entry = data.careEntries.find((item) => item.id === input.recordId);
@@ -573,6 +653,12 @@ export class MemoryParentingRepository implements ParentingRepository {
       (item) => item.id === entry.currentRevisionId,
     );
     if (!revision) throw new Error("REVISION_NOT_FOUND");
+    if (
+      context.agent?.expectedRecordVersion &&
+      context.agent.expectedRecordVersion !== revision.hash
+    ) {
+      throw new Error("VERSION_CONFLICT");
+    }
     const previousRevision = revision.previousRevisionId
       ? data.revisions.find((item) => item.id === revision.previousRevisionId)
       : undefined;
@@ -617,11 +703,15 @@ export class MemoryParentingRepository implements ParentingRepository {
     await this.audit(context, "updated", "care_entry", entry.id, {
       revisionNumber: revision.revisionNumber,
     });
-    return entry;
+    const result = { ...entry, recordVersion: revision.hash };
+    this.recordAgentOperation(context, result);
+    return result;
   }
 
   async correctCareEntry(context: RequestContext, input: CareEntryCorrectionInput) {
     requireOwner(context.member.role);
+    const replay = this.agentReplay<RecordRevision>(context);
+    if (replay.found) return replay.result;
     assertValidCareEntryDetails(input);
     const data = state();
     const entry = data.careEntries.find((item) => item.id === input.recordId);
@@ -633,6 +723,13 @@ export class MemoryParentingRepository implements ParentingRepository {
       (revision) => revision.id === entry.currentRevisionId,
     );
     if (!previous) throw new Error("REVISION_NOT_FOUND");
+    if (
+      context.agent?.expectedRecordVersion &&
+      context.agent.expectedRecordVersion !== previous.hash
+    ) {
+      throw new Error("CONFIRMATION_STALE");
+    }
+    this.assertAndConsumeConfirmation(context, entry.id, previous.hash);
 
     const recordedAt = new Date().toISOString();
     const occurredAt = new Date(input.occurredAt).toISOString();
@@ -686,6 +783,7 @@ export class MemoryParentingRepository implements ParentingRepository {
       { revisionNumber: revision.revisionNumber },
       previous.hash,
     );
+    this.recordAgentOperation(context, revision);
     return revision;
   }
 
@@ -807,25 +905,56 @@ export class MemoryParentingRepository implements ParentingRepository {
     input: DailyLogNotesInput,
   ) {
     requireOwner(context.member.role);
+    const replay = this.agentReplay<VersionedDailyLog>(context);
+    if (replay.found) return replay.result;
     const data = state();
     const log = ensureDailyLog(data, input.localDate);
     if (log.status !== "open") throw new Error("DAY_FINALIZED");
+    const currentVersion = dayVersionFor(log, data.careEntries, data.revisions);
+    if (
+      context.agent?.expectedDayVersion &&
+      context.agent.expectedDayVersion !== currentVersion
+    ) {
+      throw new Error("VERSION_CONFLICT");
+    }
     if (input.notes) log.notes = input.notes;
     else delete log.notes;
     await this.audit(context, "updated", "daily_log", log.id);
-    return log;
+    const result = {
+      ...log,
+      dayVersion: dayVersionFor(log, data.careEntries, data.revisions),
+    };
+    this.recordAgentOperation(context, result);
+    return result;
   }
 
   async finalizeDailyLog(context: RequestContext, localDate: string) {
     requireOwner(context.member.role);
+    const replay = this.agentReplay<VersionedDailyLog>(context);
+    if (replay.found) return replay.result;
     const data = state();
     const log = ensureDailyLog(data, localDate);
-    if (log.status === "finalized") return log;
+    const currentVersion = dayVersionFor(log, data.careEntries, data.revisions);
+    if (
+      context.agent?.expectedDayVersion &&
+      context.agent.expectedDayVersion !== currentVersion
+    ) {
+      throw new Error("CONFIRMATION_STALE");
+    }
+    this.assertAndConsumeConfirmation(context, log.id, currentVersion);
+    if (log.status === "finalized") {
+      return { ...log, dayVersion: currentVersion };
+    }
     log.status = "finalized";
     log.finalizedAt = new Date().toISOString();
     log.finalizedBy = context.member.id;
     await this.audit(context, "finalized", "daily_log", log.id);
-    return log;
+    const result = {
+      ...log,
+      dayVersion: dayVersionFor(log, data.careEntries, data.revisions),
+    };
+    this.recordAgentOperation(context, result);
+    return result;
   }
 
   async createSpecialArrangement(
@@ -1344,6 +1473,91 @@ export class MemoryParentingRepository implements ParentingRepository {
     return revision;
   }
 
+  private agentReplay<T>(
+    context: RequestContext,
+  ): { found: true; result: T } | { found: false } {
+    const agent = context.agent;
+    if (!agent?.operationId) return { found: false };
+    if (!agent.toolName || !agent.inputHash) throw new Error("VALIDATION_ERROR");
+    const existing = state().agentOperations.find(
+      (item) =>
+        item.workspaceId === context.workspace.id &&
+        item.memberId === context.member.id &&
+        item.oauthClientId === agent.oauthClientId &&
+        item.operationId === agent.operationId,
+    );
+    if (!existing) return { found: false };
+    if (
+      existing.toolName !== agent.toolName ||
+      existing.inputHash !== agent.inputHash
+    ) {
+      throw new Error("IDEMPOTENCY_CONFLICT");
+    }
+    return { found: true, result: existing.result as T };
+  }
+
+  private recordAgentOperation<T>(context: RequestContext, result: T): void {
+    const agent = context.agent;
+    if (!agent?.operationId) return;
+    if (!agent.toolName || !agent.inputHash) throw new Error("VALIDATION_ERROR");
+    const receipt: AgentOperationReceipt = {
+      id: id("agent_operation"),
+      workspaceId: context.workspace.id,
+      memberId: context.member.id,
+      oauthClientId: agent.oauthClientId,
+      operationId: agent.operationId,
+      toolName: agent.toolName,
+      inputHash: agent.inputHash,
+      result,
+      createdAt: new Date(),
+      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+    };
+    state().agentOperations.push(receipt);
+  }
+
+  private redactConfirmationHandle<T>(result: T): T {
+    if (!result || typeof result !== "object" || Array.isArray(result)) return result;
+    const redacted = { ...(result as Record<string, unknown>) };
+    delete redacted.confirmationHandle;
+    return redacted as T;
+  }
+
+  private assertAndConsumeConfirmation(
+    context: RequestContext,
+    targetId: string,
+    baseVersion: string,
+  ): void {
+    const agent = context.agent;
+    if (!agent?.confirmationTokenHash) return;
+    const data = state();
+    const index = data.agentConfirmations.findIndex(
+      (item) =>
+        item.tokenHash === agent.confirmationTokenHash &&
+        item.workspaceId === context.workspace.id &&
+        item.memberId === context.member.id &&
+        item.oauthClientId === agent.oauthClientId &&
+        item.kind === agent.confirmationKind &&
+        item.targetId === targetId,
+    );
+    if (index < 0) throw new Error("CONFIRMATION_EXPIRED");
+    const confirmation = data.agentConfirmations[index];
+    if (confirmation.expiresAt.getTime() <= Date.now()) {
+      data.agentConfirmations.splice(index, 1);
+      throw new Error("CONFIRMATION_EXPIRED");
+    }
+    if (confirmation.baseVersion !== baseVersion) {
+      throw new Error("CONFIRMATION_STALE");
+    }
+    if (confirmation.consumedByOperationId) {
+      if (confirmation.consumedByOperationId !== agent.operationId) {
+        throw new Error("CONFIRMATION_EXPIRED");
+      }
+      return;
+    }
+    confirmation.consumedAt = new Date();
+    confirmation.consumedByOperationId = agent.operationId;
+  }
+
   private async audit(
     context: RequestContext,
     action: AuditEvent["action"],
@@ -1355,13 +1569,25 @@ export class MemoryParentingRepository implements ParentingRepository {
     const data = state();
     const occurredAt = new Date().toISOString();
     const last = data.auditEvents.at(-1);
+    const agentMetadata = context.agent
+      ? {
+          source: context.agent.source,
+          oauthClientId: context.agent.oauthClientId,
+          ...(context.agent.operationId
+            ? { operationId: context.agent.operationId }
+            : {}),
+          ...(context.agent.toolName ? { toolName: context.agent.toolName } : {}),
+        }
+      : {};
+    const combinedMetadata = { ...metadata, ...agentMetadata };
     const base = {
       actorId: context.member.id,
       action,
       targetType,
       targetId,
       occurredAt,
-      metadata,
+      metadata:
+        Object.keys(combinedMetadata).length > 0 ? combinedMetadata : undefined,
     };
     data.auditEvents.push({
       id: id("audit"),

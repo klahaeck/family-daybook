@@ -11,7 +11,7 @@ import type {
 import { careStatusRecordsProvidedCare } from "@/lib/domain/care-entry-rules";
 import type { WorkspaceSettingsInput } from "@/lib/domain/schemas";
 import { lateEntryFor, localDateTimeToUtc } from "@/lib/domain/dates";
-import { id } from "@/lib/domain/integrity";
+import { canonicalJson, id, sha256 } from "@/lib/domain/integrity";
 
 export function requireOwner(role: string): void {
   if (role !== "owner") throw new Error("FORBIDDEN");
@@ -156,6 +156,36 @@ export function recordPayload(
   record: CareEntry | Appointment | Incident,
 ): Record<string, unknown> {
   return JSON.parse(JSON.stringify(record)) as Record<string, unknown>;
+}
+
+export function dayVersionFor(
+  log: DailyLog,
+  entries: CareEntry[],
+  revisions: RecordRevision[],
+): string {
+  const revisionHashes = new Map(
+    revisions.map((revision) => [revision.id, revision.hash]),
+  );
+  return sha256(
+    canonicalJson({
+      log: {
+        id: log.id,
+        localDate: log.localDate,
+        templateVersion: log.templateVersion,
+        status: log.status,
+        notes: log.notes,
+        finalizedAt: log.finalizedAt,
+        finalizedBy: log.finalizedBy,
+      },
+      entries: entries
+        .filter((entry) => entry.dailyLogId === log.id)
+        .map((entry) => ({
+          id: entry.id,
+          revisionHash: revisionHashes.get(entry.currentRevisionId),
+        }))
+        .sort((a, b) => a.id.localeCompare(b.id)),
+    }),
+  );
 }
 
 export function arrangementAtIncludedRevision(

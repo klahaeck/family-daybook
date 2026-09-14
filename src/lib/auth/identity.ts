@@ -42,6 +42,17 @@ export async function getIdentity(): Promise<Identity> {
   const user = await currentUser();
   if (!user) throw new Error("UNAUTHENTICATED");
 
+  return identityFromClerkUser(user);
+}
+
+function identityFromClerkUser(user: {
+  id: string;
+  emailAddresses: Array<{ id: string; emailAddress: string }>;
+  primaryEmailAddressId: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  twoFactorEnabled: boolean;
+}): Identity {
   const primaryEmail =
     user.emailAddresses.find((item) => item.id === user.primaryEmailAddressId)
       ?.emailAddress ?? user.emailAddresses[0]?.emailAddress;
@@ -56,4 +67,13 @@ export async function getIdentity(): Promise<Identity> {
     mfaEnabled: user.twoFactorEnabled,
     demo: false,
   };
+}
+
+export async function getIdentityForAuthUserId(
+  authUserId: string,
+): Promise<Identity> {
+  if (!clerkConfigured()) throw new Error("MCP_UNAVAILABLE");
+  const { clerkClient } = await import("@clerk/nextjs/server");
+  const user = await (await clerkClient()).users.getUser(authUserId);
+  return identityFromClerkUser(user);
 }

@@ -33,12 +33,17 @@ import type {
   SpecialArrangementUpdateInput,
 } from "@/lib/domain/schemas";
 import type { Identity } from "@/lib/auth/identity";
+import type {
+  AgentConfirmation,
+  AgentRequestAttribution,
+} from "@/lib/agents/types";
 
 export interface RequestContext {
   identity: Identity;
   workspace: Workspace;
   member: Member;
   billingOwnerAuthUserId: string;
+  agent?: AgentRequestAttribution;
 }
 
 export interface RecordBundle {
@@ -46,6 +51,9 @@ export interface RecordBundle {
   revisions: RecordRevision[];
   attachments: Attachment[];
 }
+
+export type VersionedCareEntry = CareEntry & { recordVersion: string };
+export type VersionedDailyLog = DailyLog & { dayVersion: string };
 
 export interface ReportSource {
   snapshot: ReportSnapshot;
@@ -62,7 +70,14 @@ export interface ReportSource {
 
 export interface ParentingRepository {
   resolveContext(identity: Identity): Promise<RequestContext>;
-  getDashboard(context: RequestContext, date: string): Promise<DashboardData>;
+  getAgentOperationResult<T>(
+    context: RequestContext,
+  ): Promise<{ found: true; result: T } | { found: false }>;
+  getDashboard(
+    context: RequestContext,
+    date: string,
+    createIfMissing?: boolean,
+  ): Promise<DashboardData>;
   getTimeline(context: RequestContext): Promise<TimelineData>;
   getAppointments(context: RequestContext): Promise<Appointment[]>;
   getIncidents(context: RequestContext): Promise<Incident[]>;
@@ -77,6 +92,16 @@ export interface ParentingRepository {
     recordType: RecordType,
     recordId: string,
   ): Promise<RecordBundle | null>;
+  getDayVersion(context: RequestContext, localDate: string): Promise<string>;
+  createAgentConfirmation<T>(
+    context: RequestContext,
+    confirmation: AgentConfirmation,
+    result: T,
+  ): Promise<T>;
+  getAgentConfirmation(
+    context: RequestContext,
+    tokenHash: string,
+  ): Promise<AgentConfirmation | null>;
   getReportSource(
     context: RequestContext,
     reportId: string,
@@ -84,11 +109,11 @@ export interface ParentingRepository {
   createCareEntry(
     context: RequestContext,
     input: CareEntryInput,
-  ): Promise<CareEntry>;
+  ): Promise<VersionedCareEntry>;
   updateCareEntry(
     context: RequestContext,
     input: CareEntryUpdateInput,
-  ): Promise<CareEntry>;
+  ): Promise<VersionedCareEntry>;
   correctCareEntry(
     context: RequestContext,
     input: CareEntryCorrectionInput,
@@ -108,11 +133,11 @@ export interface ParentingRepository {
   updateDailyLogNotes(
     context: RequestContext,
     input: DailyLogNotesInput,
-  ): Promise<DailyLog>;
+  ): Promise<VersionedDailyLog>;
   finalizeDailyLog(
     context: RequestContext,
     localDate: string,
-  ): Promise<DailyLog>;
+  ): Promise<VersionedDailyLog>;
   createSpecialArrangement(
     context: RequestContext,
     input: SpecialArrangementCreateInput,
