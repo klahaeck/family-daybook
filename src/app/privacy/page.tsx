@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 
 import { LegalPage, LegalSection } from "@/components/marketing/legal-page";
 
@@ -15,9 +16,9 @@ export default function PrivacyPage() {
       title="Privacy policy"
       description="Family Daybook is designed for sensitive family information. This policy explains what we collect, why we use it, and the choices available to you."
     >
-      <LegalSection title="1. Who operates Family Daybook">
+      <LegalSection title="1. About this service">
         <p>
-          Family Daybook is operated by Family Daybook (“Family Daybook,” “we,” “us,” or “our”). This policy applies to the Family Daybook website, application, and related services.
+          Family Daybook (“Family Daybook,” “we,” “us,” or “our”) provides the Family Daybook website, application, and related services. This policy applies when you use those services.
         </p>
       </LegalSection>
 
@@ -31,6 +32,7 @@ export default function PrivacyPage() {
           <li><strong>Activity and integrity information:</strong> server timestamps, revision history, audit events, download activity, record hashes, invitation activity, and deletion tombstones.</li>
           <li><strong>Essential technical information:</strong> authentication cookies, request information, and operational logs needed to secure, troubleshoot, and deliver the service.</li>
           <li><strong>Analytics information:</strong> Google Analytics may collect page views, session activity, approximate location, browser and device information, referring source, and a pseudonymous client identifier stored in a first-party analytics cookie.</li>
+          <li><strong>Support correspondence:</strong> the name, reply email, topic, message, and related details that you choose to submit through the support form.</li>
         </ul>
       </LegalSection>
 
@@ -52,7 +54,7 @@ export default function PrivacyPage() {
       <LegalSection title="4. When information is shared">
         <p>We share information only as needed to operate the service, at your direction, or where required. Recipients may include:</p>
         <ul className="list-disc space-y-2 pl-6 marker:text-primary">
-          <li><strong>Service providers:</strong> Clerk for authentication and subscription billing, Stripe for payment processing, MongoDB Atlas for database hosting, Vercel for application hosting, private file storage, and background workflows, and Google for website and application analytics. These providers process information under their own contractual and security commitments.</li>
+          <li><strong>Service providers:</strong> Clerk for authentication and subscription billing, Stripe for payment processing, MongoDB Atlas for database hosting, Vercel for application hosting, private file storage, and background workflows, Google for website and application analytics, Resend for delivering support correspondence, and Cloudflare Turnstile for support-form abuse prevention. These providers process information under their own contractual and security commitments.</li>
           <li><strong>Authorized reviewers:</strong> people an owner invites to a workspace. Reviewers receive read-only access determined by the service’s current permissions. Owners are responsible for choosing reviewers carefully and revoking access when appropriate.</li>
           <li><strong>Legal and safety recipients:</strong> authorities, advisers, or other parties when we reasonably believe disclosure is required by law, necessary to protect rights or safety, or needed to investigate fraud or abuse.</li>
           <li><strong>Business transfers:</strong> a successor or involved advisers during a merger, acquisition, financing, reorganization, or sale of assets, subject to appropriate confidentiality protections.</li>
@@ -69,7 +71,7 @@ export default function PrivacyPage() {
 
       <LegalSection title="6. Information about children">
         <p>Family Daybook is intended for adults and is not directed to children. Adult users may choose to enter information relating to children as part of a private family workspace. The adult account holder is responsible for having appropriate authority to enter, use, invite access to, and disclose that information.</p>
-        <p>If you believe a child provided personal information directly to us without appropriate adult involvement, contact us so we can review the request.</p>
+        <p>If you believe a child provided personal information directly to us without appropriate adult involvement, use the <Link href="/support" className="font-semibold text-primary underline underline-offset-4">support form</Link> so we can review the request.</p>
       </LegalSection>
 
       <LegalSection title="7. Storage and security">
@@ -85,17 +87,15 @@ export default function PrivacyPage() {
 
       <LegalSection title="9. Your choices and requests">
         <p>Depending on your location, you may have rights to request access, correction, deletion, restriction, portability, or information about how personal information is used. The application also provides tools to review records, append corrections, export reports, manage reviewers, and—when enabled—permanently purge individual records.</p>
-        <p>To submit an account-level or privacy request, email admin@myfamilydaybook.com. We may need to verify your identity and authority before completing a request.</p>
+        <p>Use the <Link href="/support" className="font-semibold text-primary underline underline-offset-4">support form</Link> to submit an account-level or privacy request. We may need to verify your identity and authority before completing a request.</p>
       </LegalSection>
 
       <LegalSection title="10. Changes to this policy">
         <p>We may update this policy as the service or applicable requirements change. We will post the revised policy with a new effective date and provide additional notice when appropriate.</p>
       </LegalSection>
 
-      <LegalSection title="11. Contact us">
-        <p>
-          Questions or requests may be sent to admin@myfamilydaybook.com.
-        </p>
+      <LegalSection title="11. Questions and requests">
+        <p>Send questions or requests through the <Link href="/support" className="font-semibold text-primary underline underline-offset-4">private support form</Link>.</p>
       </LegalSection>
     </LegalPage>
   );

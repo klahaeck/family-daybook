@@ -1,0 +1,49 @@
+{
+  "sampleNotice": "Synthetic example only. All identifiers and checksum values are invented.",
+  "schemaVersion": 2,
+  "reportId": "report_synthetic_example",
+  "workspaceId": "workspace_synthetic_example",
+  "generatedAt": "2026-09-14T15:00:00.000Z",
+  "timezone": "Etc/UTC",
+  "filters": {
+    "from": "2026-09-01",
+    "to": "2026-09-07",
+    "childIds": ["child_synthetic_example"],
+    "includeCare": true,
+    "includeAppointments": true,
+    "includeIncidents": false
+  },
+  "plannedArrangementNotice": "Planned arrangements are context only and do not establish that care occurred.",
+  "records": [
+    {
+      "type": "care_entry",
+      "id": "care_synthetic_example",
+      "currentRevisionId": "revision_synthetic_example"
+    }
+  ],
+  "plannedArrangements": [],
+  "revisions": [
+    {
+      "id": "revision_synthetic_example",
+      "recordType": "care_entry",
+      "recordId": "care_synthetic_example",
+      "revisionNumber": 1,
+      "recordedAt": "2026-09-03T12:30:00.000Z",
+      "authorId": "member_synthetic_example",
+      "reason": "Created",
+      "sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+    }
+  ],
+  "attachments": [
+    {
+      "id": "attachment_synthetic_example",
+      "recordType": "care_entry",
+      "recordId": "care_synthetic_example",
+      "originalName": "synthetic-note.pdf",
+      "contentType": "application/pdf",
+      "size": 1024,
+      "uploadedAt": "2026-09-03T12:31:00.000Z",
+      "sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+    }
+  ]
+}

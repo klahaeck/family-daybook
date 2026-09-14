@@ -14,6 +14,7 @@ export default defineConfig({
     env: {
       NEXT_DIST_DIR: ".next-playwright",
       NEXT_PUBLIC_APP_URL: "http://127.0.0.1:3100",
+      NEXT_PUBLIC_TURNSTILE_SITE_KEY: "1x00000000000000000000AA",
       NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: "",
       CLERK_SECRET_KEY: "",
       MONGODB_URI: "",

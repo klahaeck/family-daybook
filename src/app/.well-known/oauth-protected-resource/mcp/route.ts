@@ -2,20 +2,20 @@ import {
   corsHeaders,
   generateClerkProtectedResourceMetadata,
 } from "@clerk/mcp-tools/server";
-import { getPublicOrigin } from "mcp-handler";
 
 import { clerkConfigured } from "@/lib/auth/identity";
 import { mongoConfigured } from "@/lib/db/mongodb";
-import { DAYBOOK_SCOPES } from "@/lib/mcp/daybook-mcp";
+import { getSiteUrl } from "@/lib/metadata/site-url";
+import { DAYBOOK_SCOPES } from "@/lib/mcp/catalog";
 
 export const dynamic = "force-dynamic";
 
-export function GET(request: Request) {
+export function GET(_request?: Request) {
   const publishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
   if (!clerkConfigured() || !mongoConfigured() || !publishableKey) {
     return Response.json({ error: "MCP_UNAVAILABLE" }, { status: 503 });
   }
-  const resourceUrl = `${getPublicOrigin(request)}/mcp`;
+  const resourceUrl = new URL("/mcp", getSiteUrl()).toString();
   return Response.json(
     generateClerkProtectedResourceMetadata({
       publishableKey,

@@ -8,6 +8,9 @@ import {
 } from "@/lib/mcp/daybook-mcp";
 import type { AuthInfo } from "@modelcontextprotocol/server";
 import { daybookCreateCareEntrySchema } from "@/lib/application/daybook-service";
+import { DAYBOOK_TOOL_CATALOG } from "@/lib/mcp/catalog";
+
+const canonicalOrigin = "https://www.myfamilydaybook.com";
 
 describe("Daybook MCP contract", () => {
   it("maps every tool to its least-privilege scope", () => {
@@ -38,6 +41,7 @@ describe("Daybook MCP contract", () => {
   });
 
   it("returns a protected-resource challenge when no bearer token is sent", async () => {
+    vi.stubEnv("NEXT_PUBLIC_APP_URL", canonicalOrigin);
     vi.stubEnv(
       "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY",
       `pk_test_${Buffer.from("clerk.example$").toString("base64url")}`,
@@ -45,16 +49,17 @@ describe("Daybook MCP contract", () => {
     vi.stubEnv("CLERK_SECRET_KEY", "sk_test_example");
     vi.stubEnv("MONGODB_URI", "mongodb://127.0.0.1:27017");
     const response = await daybookMcpHandler(
-      new Request("https://daybook.example/mcp", { method: "POST" }),
+      new Request(`${canonicalOrigin}/mcp`, { method: "POST" }),
     );
     expect(response.status).toBe(401);
     expect(response.headers.get("www-authenticate")).toContain(
-      "https://daybook.example/.well-known/oauth-protected-resource/mcp",
+      `${canonicalOrigin}/.well-known/oauth-protected-resource/mcp`,
     );
     vi.unstubAllEnvs();
   });
 
   it("rejects an MCP tool call with a standards-compliant scope challenge", async () => {
+    vi.stubEnv("NEXT_PUBLIC_APP_URL", canonicalOrigin);
     const request = new Request("https://daybook.example/mcp", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -100,6 +105,7 @@ describe("Daybook MCP contract", () => {
     expect(modernResponse.headers.get("www-authenticate")).toContain(
       DAYBOOK_SCOPES.write,
     );
+    vi.unstubAllEnvs();
   });
 
   it("requires exactly one typed source for care-entry creation", () => {
@@ -167,14 +173,20 @@ describe("Daybook MCP contract", () => {
     expect(payload.result.tools.map((tool) => tool.name)).toEqual(
       Object.keys(TOOL_SCOPES),
     );
-    for (const tool of payload.result.tools) {
+    for (const [index, tool] of payload.result.tools.entries()) {
       expect(tool.inputSchema).toBeDefined();
       expect(tool.outputSchema).toBeDefined();
-      expect(tool.annotations).toBeDefined();
+      expect(tool).toMatchObject({
+        name: DAYBOOK_TOOL_CATALOG[index].name,
+        title: DAYBOOK_TOOL_CATALOG[index].title,
+        description: DAYBOOK_TOOL_CATALOG[index].description,
+        annotations: DAYBOOK_TOOL_CATALOG[index].annotations,
+      });
     }
   });
 
   it("publishes the exact protected resource and supported scopes", async () => {
+    vi.stubEnv("NEXT_PUBLIC_APP_URL", canonicalOrigin);
     vi.stubEnv(
       "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY",
       `pk_test_${Buffer.from("clerk.example$").toString("base64url")}`,
@@ -189,7 +201,7 @@ describe("Daybook MCP contract", () => {
     );
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
-      resource: "https://daybook.example/mcp",
+      resource: `${canonicalOrigin}/mcp`,
       scopes_supported: Object.values(DAYBOOK_SCOPES),
     });
     vi.unstubAllEnvs();

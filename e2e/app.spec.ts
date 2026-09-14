@@ -14,12 +14,16 @@ test("public homepage presents the Family Daybook brochure", async ({ page }) =>
   await expect(page.getByRole("link", { name: "Sign in" }).first()).toHaveAttribute("href", "/sign-in");
   await expect(page.getByRole("link", { name: "Privacy", exact: true }).last()).toHaveAttribute("href", "/privacy");
   await expect(page.getByRole("link", { name: "Terms of use" })).toHaveAttribute("href", "/terms");
+  await expect(page.getByRole("link", { name: "Agent access", exact: true }).first()).toHaveAttribute("href", "/agent-access");
+  await expect(page.getByRole("link", { name: "Support", exact: true })).toHaveAttribute("href", "/support");
   await expect(page.getByText(/local demo workspace/i)).toHaveCount(0);
+  const jsonLd = await page.locator('script[type="application/ld+json"]').textContent();
+  expect(JSON.parse(jsonLd ?? "{}")["@graph"]).toHaveLength(3);
 });
 
 test("appearance follows the system by default and saves an override", async ({ page }) => {
   await page.emulateMedia({ colorScheme: "dark" });
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
 
   const root = page.locator("html");
   const appearance = page.getByRole("button", { name: "Choose appearance" }).first();
@@ -29,7 +33,7 @@ test("appearance follows the system by default and saves an override", async ({ 
   await page.getByRole("menuitemradio", { name: "Light" }).click();
   await expect(root).not.toHaveClass(/\bdark\b/);
 
-  await page.reload();
+  await page.reload({ waitUntil: "domcontentloaded" });
   await expect(root).not.toHaveClass(/\bdark\b/);
 
   await appearance.click();
@@ -38,13 +42,29 @@ test("appearance follows the system by default and saves an override", async ({ 
 });
 
 test("public pages have no serious accessibility violations", async ({ page }) => {
-  await page.goto("/");
-  const results = await new AxeBuilder({ page }).analyze();
-  expect(
-    results.violations.filter(
-      (violation) => violation.impact === "critical" || violation.impact === "serious",
-    ),
-  ).toEqual([]);
+  test.setTimeout(90_000);
+  for (const path of [
+    "/",
+    "/pricing",
+    "/co-parenting-recordkeeping",
+    "/agent-access",
+    "/features/record-integrity",
+    "/features/report-packages",
+    "/features/reviewer-access",
+    "/guides/factual-family-records",
+    "/privacy",
+    "/terms",
+    "/support",
+  ]) {
+    await page.goto(path, { waitUntil: "domcontentloaded" });
+    const results = await new AxeBuilder({ page }).analyze();
+    expect(
+      results.violations.filter(
+        (violation) => violation.impact === "critical" || violation.impact === "serious",
+      ),
+      `${path} should have no serious accessibility violations`,
+    ).toEqual([]);
+  }
 });
 
 test("public pricing explains owner billing and reviewer coverage", async ({ page }) => {
@@ -56,23 +76,75 @@ test("public pricing explains owner billing and reviewer coverage", async ({ pag
   await expect(page.getByText("Billing preview unavailable")).toBeVisible();
 });
 
-test("public legal pages show the current operator and governing law", async ({ page }) => {
-  await page.goto("/privacy");
+test("public legal pages use the private support form without prohibited identity details", async ({ page }) => {
+  await page.goto("/privacy", { waitUntil: "domcontentloaded" });
   await expect(page.getByRole("heading", { name: "Privacy policy" })).toBeVisible();
-  await expect(
-    page.getByText(/Family Daybook is operated by Family Daybook/),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "About this service" })).toBeVisible();
+  await expect(page.getByRole("link", { name: /support form/i }).first()).toHaveAttribute("href", "/support");
+  let legalText = await page.locator("main").innerText();
+  expect(legalText).not.toMatch(/Draft placeholders|mailing address|governing law|jurisdiction/i);
+  expect(legalText).not.toMatch(/[A-Z0-9._%+-]+@myfamilydaybook\.com/i);
 
-  await page.goto("/terms");
+  await page.goto("/terms", { waitUntil: "domcontentloaded" });
   await expect(page.getByRole("heading", { name: "Terms of use" })).toBeVisible();
-  await expect(
-    page.getByText(/governed by the laws of MN, USA/),
-  ).toBeVisible();
+  await expect(page.getByRole("link", { name: /support form/i }).first()).toHaveAttribute("href", "/support");
+  legalText = await page.locator("main").innerText();
+  expect(legalText).not.toMatch(/Draft placeholders|mailing address|governing law|jurisdiction/i);
+  expect(legalText).not.toMatch(/[A-Z0-9._%+-]+@myfamilydaybook\.com/i);
+});
+
+test("support is a private noindex form with bounded fields", async ({ page }) => {
+  await page.goto("/support");
+  await expect(page.getByRole("heading", { name: "Family Daybook support" })).toBeVisible();
+  await expect(page.locator('meta[name="robots"]')).toHaveAttribute("content", /noindex, follow/);
+  await expect(page.getByLabel("Name (optional)")).toHaveAttribute("maxlength", "100");
+  await expect(page.getByLabel("Reply email")).toHaveAttribute("type", "email");
+  await expect(page.getByLabel("Topic")).toBeVisible();
+  await expect(page.getByLabel("Message")).toHaveAttribute("minlength", "10");
+  await expect(page.getByLabel("Message")).toHaveAttribute("maxlength", "4000");
+});
+
+test("agent access documents the live catalog and safety contract", async ({ page }) => {
+  await page.goto("/agent-access");
+  await expect(page.getByRole("heading", { name: "Let an authorized assistant help with the daybook." })).toBeVisible();
+  await expect(page.getByText("http://127.0.0.1:3100/mcp", { exact: true })).toBeVisible();
+  await expect(page.locator("code", { hasText: /^get_/ })).toHaveCount(3);
+  await expect(page.locator("code", { hasText: /^create_|^update_|^preview_|^confirm_/ })).toHaveCount(7);
+  await expect(page.getByText(/cannot cross workspace boundaries/i)).toBeVisible();
+  const jsonLd = await page.locator('script[type="application/ld+json"]').textContent();
+  expect(JSON.parse(jsonLd ?? "{}")["@graph"]).toHaveLength(2);
+});
+
+test("feature evidence pages state their evidence and limits", async ({ page, request }) => {
+  test.setTimeout(60_000);
+  const expectations = [
+    ["/features/record-integrity", "Record integrity without hidden rewrites", /do not make the service.*tamper-proof/i],
+    ["/features/report-packages", "Organized report packages with a stable snapshot", /snapshot, not a live view/i],
+    ["/features/reviewer-access", "Read-only reviewer access with clear boundaries", /cannot retract files/i],
+    ["/guides/factual-family-records", "How to write clear, factual family records", /Synthetic example/i],
+  ] as const;
+
+  for (const [path, heading, limit] of expectations) {
+    await page.goto(path, { waitUntil: "domcontentloaded" });
+    await expect(page.getByRole("heading", { name: heading })).toBeVisible();
+    await expect(page.getByText(limit).first()).toBeVisible();
+  }
+
+  const sample = await request.get("/samples/report-package-manifest.json");
+  expect(sample.ok()).toBe(true);
+  await expect(sample.json()).resolves.toMatchObject({
+    schemaVersion: 2,
+    workspaceId: "workspace_synthetic_example",
+  });
 });
 
 test("public routes expose the intended crawler metadata", async ({ page, request }) => {
   await page.goto("/");
   await expect(page.locator('meta[name="robots"]')).toHaveAttribute("content", /index, follow/);
+  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
+    "href",
+    "http://127.0.0.1:3100",
+  );
 
   await page.goto("/app");
   await expect(page.locator('meta[name="robots"]')).toHaveAttribute("content", /noindex, nofollow/);
@@ -80,13 +152,42 @@ test("public routes expose the intended crawler metadata", async ({ page, reques
   const robots = await (await request.get("/robots.txt")).text();
   expect(robots).toContain("Disallow: /app");
   expect(robots).toContain("Disallow: /api");
+  expect(robots).toContain("Disallow: /.well-known/workflow/");
+  expect(robots).toContain("Allow: /.well-known/oauth-protected-resource/mcp");
+  expect(robots).not.toContain("Disallow: /.well-known\n");
 
   const sitemap = await (await request.get("/sitemap.xml")).text();
   expect(sitemap).toContain("<loc>http://127.0.0.1:3100/</loc>");
   expect(sitemap).toContain("<loc>http://127.0.0.1:3100/pricing</loc>");
   expect(sitemap).toContain("<loc>http://127.0.0.1:3100/privacy</loc>");
   expect(sitemap).toContain("<loc>http://127.0.0.1:3100/terms</loc>");
+  expect(sitemap).toContain("<loc>http://127.0.0.1:3100/agent-access</loc>");
+  expect(sitemap).toContain("<loc>http://127.0.0.1:3100/features/record-integrity</loc>");
+  expect(sitemap).toContain("<loc>http://127.0.0.1:3100/features/report-packages</loc>");
+  expect(sitemap).toContain("<loc>http://127.0.0.1:3100/features/reviewer-access</loc>");
+  expect(sitemap).toContain("<loc>http://127.0.0.1:3100/guides/factual-family-records</loc>");
   expect(sitemap).not.toContain("/app</loc>");
+  expect(sitemap).not.toContain("/support</loc>");
+  expect(sitemap).not.toContain("<lastmod>");
+
+  const capabilities = await request.get("/agent-capabilities.json");
+  expect(capabilities.ok()).toBe(true);
+  expect(capabilities.headers()["access-control-allow-origin"]).toBe("*");
+  const capabilityBody = await capabilities.json();
+  expect(capabilityBody.mcp.endpoint).toBe("http://127.0.0.1:3100/mcp");
+  expect(capabilityBody.tools).toHaveLength(10);
+
+  const llms = await request.get("/llms.txt");
+  expect(llms.ok()).toBe(true);
+  expect(llms.headers()["content-type"]).toContain("text/plain");
+  expect(await llms.text()).toContain("http://127.0.0.1:3100/agent-access");
+
+  for (const userAgent of ["OAI-SearchBot", "PerplexityBot"]) {
+    const response = await request.get("/agent-access", {
+      headers: { "User-Agent": userAgent },
+    });
+    expect(response.status()).toBe(200);
+  }
 });
 
 test("social images are privacy-safe 1200 by 630 PNGs", async ({ request }) => {
@@ -102,6 +203,15 @@ test("social images are privacy-safe 1200 by 630 PNGs", async ({ request }) => {
 });
 
 test("legacy application routes permanently redirect under app", async ({ request }) => {
+  const apexResponse = await request.get("/agent-access", {
+    headers: { Host: "myfamilydaybook.com" },
+    maxRedirects: 0,
+  });
+  expect(apexResponse.status()).toBe(308);
+  expect(apexResponse.headers().location).toBe(
+    "https://www.myfamilydaybook.com/agent-access",
+  );
+
   const redirects = [
     ["/timeline", "/app/timeline"],
     ["/appointments", "/app/appointments"],

@@ -28,7 +28,7 @@ export default function TermsPage() {
 
       <LegalSection title="3. Accounts and security">
         <p>You must provide accurate account information, keep it current, and protect your sign-in credentials and devices. You are responsible for activity under your account and for enabling available multi-factor authentication where appropriate.</p>
-        <p>Notify us promptly at admin@myfamilydaybook.com if you suspect unauthorized access. We may restrict access when reasonably necessary to protect users, information, or the service.</p>
+        <p>Notify us promptly through the <Link href="/support" className="font-semibold text-primary underline underline-offset-4">support form</Link> if you suspect unauthorized access. We may restrict access when reasonably necessary to protect users, information, or the service.</p>
       </LegalSection>
 
       <LegalSection title="4. Plans and billing">
@@ -78,7 +78,7 @@ export default function TermsPage() {
       </LegalSection>
 
       <LegalSection title="12. Deletion and termination">
-        <p>You may stop using the service at any time. Contact admin@myfamilydaybook.com for account-level deletion requests. We may suspend or terminate access for material violations, security risks, unlawful use, or where required to protect the service or others.</p>
+        <p>You may stop using the service at any time. Use the <Link href="/support" className="font-semibold text-primary underline underline-offset-4">support form</Link> for account-level deletion requests. We may suspend or terminate access for material violations, security risks, unlawful use, or where required to protect the service or others.</p>
         <p>Deleting active content does not revoke copies already downloaded by you or an authorized reviewer. Content-free audit tombstones and temporary provider backups may remain as described in the Privacy Policy.</p>
       </LegalSection>
 
@@ -87,26 +87,20 @@ export default function TermsPage() {
       </LegalSection>
 
       <LegalSection title="14. Limitation of liability">
-        <p>To the fullest extent permitted by law, Family Daybook and its operators, affiliates, and service providers will not be liable for indirect, incidental, special, consequential, exemplary, or punitive damages, or for loss of data, use, goodwill, or opportunity arising from the service.</p>
+        <p>To the fullest extent permitted by law, Family Daybook and its service providers will not be liable for indirect, incidental, special, consequential, exemplary, or punitive damages, or for loss of data, use, goodwill, or opportunity arising from the service.</p>
         <p>Where liability cannot be excluded, our total liability for claims relating to the service will not exceed the greater of amounts you paid us during the 12 months before the claim or 100 US dollars, unless applicable law requires a different result.</p>
       </LegalSection>
 
       <LegalSection title="15. Indemnity">
-        <p>To the extent permitted by law, you agree to defend and indemnify Family Daybook and its operators from claims, losses, and expenses arising from your content, your misuse of the service, your violation of these terms, or your violation of another person’s rights.</p>
+        <p>To the extent permitted by law, you agree to defend and indemnify Family Daybook from claims, losses, and expenses arising from your content, your misuse of the service, your violation of these terms, or your violation of another person’s rights.</p>
       </LegalSection>
 
-      <LegalSection title="16. Governing law">
-        <p>These terms are governed by the laws of MN, USA, without regard to conflict-of-law rules. Any dispute must be brought in the courts located in that jurisdiction unless applicable law requires otherwise.</p>
-      </LegalSection>
-
-      <LegalSection title="17. Changes to these terms">
+      <LegalSection title="16. Changes to these terms">
         <p>We may update these terms as the service changes. We will post revised terms with a new effective date and provide additional notice when appropriate. Continued use after revised terms take effect means you accept them.</p>
       </LegalSection>
 
-      <LegalSection title="18. Contact">
-        <p>
-          Questions about these terms may be sent to admin@myfamilydaybook.com.
-        </p>
+      <LegalSection title="17. Questions">
+        <p>Send questions about these terms through the <Link href="/support" className="font-semibold text-primary underline underline-offset-4">private support form</Link>.</p>
       </LegalSection>
     </LegalPage>
   );

@@ -14,6 +14,12 @@ const nextConfig: NextConfig = {
   async redirects() {
     return [
       {
+        source: "/:path*",
+        has: [{ type: "host", value: "myfamilydaybook.com" }],
+        destination: "https://www.myfamilydaybook.com/:path*",
+        permanent: true,
+      },
+      {
         source: "/",
         has: [
           {

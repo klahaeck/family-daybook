@@ -21,7 +21,10 @@ import { AgentAccessFeature } from "@/components/marketing/agent-access-feature"
 import { DaybookLink } from "@/components/marketing/daybook-link";
 import { MarketingShell } from "@/components/marketing/marketing-shell";
 import { ProductPreview } from "@/components/marketing/product-preview";
+import { JsonLd } from "@/components/metadata/json-ld";
 import { userIsSignedIn } from "@/lib/auth/identity";
+import { getSiteUrl } from "@/lib/metadata/site-url";
+import { homeStructuredData } from "@/lib/metadata/structured-data";
 import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = {
@@ -56,9 +59,9 @@ const features = [
   { icon: ListChecks, title: "A steadier daily rhythm", description: "Turn recurring family routines into a simple checklist and add factual notes only when they are useful." },
   { icon: Clock3, title: "One clear timeline", description: "Bring caregiving, appointments, and important moments together in chronological order." },
   { icon: CalendarDays, title: "Appointments in context", description: "Keep schedules, responsibility, arrival details, and outcomes together instead of scattered across messages." },
-  { icon: FileClock, title: "Factual incident notes", description: "Record what happened with observable details, exact words, witnesses, actions, and outcomes." },
-  { icon: History, title: "Corrections that stay visible", description: "Add a reasoned correction without silently replacing what was recorded before." },
-  { icon: FileCheck2, title: "Organized record packages", description: "Create stable snapshots with included records, originals, revision history, and checksum manifests." },
+  { icon: FileClock, title: "Factual incident notes", description: "Record what happened with observable details, exact words, witnesses, actions, and outcomes.", href: "/guides/factual-family-records" },
+  { icon: History, title: "Corrections that stay visible", description: "Add a reasoned correction without silently replacing what was recorded before.", href: "/features/record-integrity" },
+  { icon: FileCheck2, title: "Organized record packages", description: "Create stable snapshots with included records, originals, revision history, and checksum manifests.", href: "/features/report-packages" },
 ];
 
 const securityPoints = [
@@ -70,9 +73,11 @@ const securityPoints = [
 
 export default async function MarketingHome() {
   const signedIn = await userIsSignedIn();
+  const structuredData = homeStructuredData(getSiteUrl());
 
   return (
     <MarketingShell signedIn={signedIn}>
+      <JsonLd data={structuredData} />
       <main>
         <section className="relative isolate overflow-hidden">
           <div className="absolute inset-0 -z-20 bg-[linear-gradient(180deg,var(--hero-start)_0%,var(--hero-middle)_62%,var(--background)_100%)]" />
@@ -148,15 +153,17 @@ export default async function MarketingHome() {
               <p className="mt-5 text-lg leading-8 text-muted-foreground">Flexible enough for everyday care, structured enough to stay useful over time.</p>
             </div>
             <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {features.map((feature) => (
-                <article key={feature.title} className="rounded-3xl border border-border/80 bg-card/85 p-6 shadow-sm backdrop-blur">
+              {features.map((feature) => {
+                const card = <article className="h-full rounded-3xl border border-border/80 bg-card/85 p-6 shadow-sm backdrop-blur transition-colors group-hover:border-primary/30 group-hover:bg-card">
                   <span className="grid size-11 place-items-center rounded-2xl bg-secondary text-primary">
                     <feature.icon className="size-5" aria-hidden="true" />
                   </span>
                   <h3 className="mt-6 text-xl font-semibold">{feature.title}</h3>
                   <p className="mt-3 leading-7 text-muted-foreground">{feature.description}</p>
-                </article>
-              ))}
+                  {feature.href && <p className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-primary">Learn more <ArrowRight className="size-4" aria-hidden="true" /></p>}
+                </article>;
+                return feature.href ? <Link key={feature.title} href={feature.href} className="group rounded-3xl">{card}</Link> : <div key={feature.title}>{card}</div>;
+              })}
             </div>
           </div>
         </section>
@@ -175,6 +182,10 @@ export default async function MarketingHome() {
                 <p className="mt-5 max-w-xl text-lg leading-8 text-primary-foreground/75">Family Daybook combines private storage with repeated membership checks, visible revision history, and intentional sharing controls.</p>
                 <Link href="/privacy" className="mt-8 inline-flex items-center gap-2 text-sm font-semibold underline decoration-white/30 underline-offset-4 hover:decoration-white">
                   Read our privacy approach
+                  <ArrowRight className="size-4" aria-hidden="true" />
+                </Link>
+                <Link href="/features/reviewer-access" className="mt-4 flex items-center gap-2 text-sm font-semibold underline decoration-white/30 underline-offset-4 hover:decoration-white">
+                  Learn about reviewer access
                   <ArrowRight className="size-4" aria-hidden="true" />
                 </Link>
               </div>

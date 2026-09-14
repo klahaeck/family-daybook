@@ -35,6 +35,7 @@ import {
 import type { ActionResult, Caregiver, Child, RoutineTemplate } from "@/lib/domain/types";
 import { getRepository, getRequestContext } from "@/lib/repository";
 import { generateEvidencePackage } from "@/lib/reporting/generate-package";
+import { getSiteUrl } from "@/lib/metadata/site-url";
 import {
   completeAttachmentUpload,
   prepareAttachmentUpload,
@@ -455,10 +456,7 @@ export async function inviteReviewerAction(input: unknown): Promise<ActionResult
       const client = await clerkClient();
       await client.invitations.createInvitation({
         emailAddress: parsed.data.email,
-        redirectUrl: new URL(
-          "/app",
-          process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000",
-        ).toString(),
+        redirectUrl: new URL("/app", getSiteUrl()).toString(),
         publicMetadata: { workspaceId: context.workspace.id, role: "reviewer" },
       });
     }

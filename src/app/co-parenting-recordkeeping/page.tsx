@@ -20,9 +20,12 @@ import {
 import { DaybookLink } from "@/components/marketing/daybook-link";
 import { AgentAccessFeature } from "@/components/marketing/agent-access-feature";
 import { MarketingShell } from "@/components/marketing/marketing-shell";
+import { JsonLd } from "@/components/metadata/json-ld";
 import { ProductPreview } from "@/components/marketing/product-preview";
 import { buttonVariants } from "@/components/ui/button";
 import { userIsSignedIn } from "@/lib/auth/identity";
+import { getSiteUrl } from "@/lib/metadata/site-url";
+import { pageStructuredData } from "@/lib/metadata/structured-data";
 import { cn } from "@/lib/utils";
 
 const title = "Co-Parenting Documentation & Family Timeline | Family Daybook";
@@ -156,9 +159,21 @@ const faqs = [
 
 export default async function CoParentingRecordkeepingPage() {
   const signedIn = await userIsSignedIn();
+  const structuredData = pageStructuredData({
+    siteUrl: getSiteUrl(),
+    path: "/co-parenting-recordkeeping",
+    name: title,
+    description,
+    breadcrumbs: [
+      { name: "Family Daybook", path: "/" },
+      { name: "Co-parenting recordkeeping", path: "/co-parenting-recordkeeping" },
+    ],
+    faqs,
+  });
 
   return (
     <MarketingShell signedIn={signedIn}>
+      <JsonLd data={structuredData} />
       <main>
         <section className="relative isolate overflow-hidden">
           <div className="absolute inset-0 -z-20 bg-[linear-gradient(180deg,var(--hero-start)_0%,var(--hero-middle)_66%,var(--background)_100%)]" />
@@ -251,6 +266,9 @@ export default async function CoParentingRecordkeepingPage() {
                 <strong className="font-semibold text-foreground">A useful factual note stays with what can be observed.</strong>{" "}
                 Include dates, times, people present, actions, and outcomes where relevant. Avoid speculation, diagnosis, or conclusions about another person’s intent.
               </p>
+              <Link href="/guides/factual-family-records" className="mt-3 inline-flex items-center font-semibold text-primary underline underline-offset-4">
+                Read the factual recordkeeping guide
+              </Link>
             </div>
           </div>
         </section>
@@ -280,6 +298,10 @@ export default async function CoParentingRecordkeepingPage() {
                   </div>
                 </article>
               ))}
+              <div className="flex flex-wrap gap-3 pl-14 pt-3 sm:pl-16">
+                <Link href="/features/record-integrity" className={buttonVariants({ variant: "outline" })}>How record integrity works</Link>
+                <Link href="/features/report-packages" className={buttonVariants({ variant: "outline" })}>Inside a report package</Link>
+              </div>
             </div>
           </div>
         </section>
@@ -305,6 +327,12 @@ export default async function CoParentingRecordkeepingPage() {
                   className="mt-8 inline-flex min-h-11 items-center text-sm font-semibold underline decoration-white/30 underline-offset-4 hover:decoration-white"
                 >
                   Read the Family Daybook privacy approach
+                </Link>
+                <Link
+                  href="/features/reviewer-access"
+                  className="mt-3 flex min-h-11 items-center text-sm font-semibold underline decoration-white/30 underline-offset-4 hover:decoration-white"
+                >
+                  Learn how reviewer access works
                 </Link>
               </div>
               <div className="grid gap-3 sm:grid-cols-2">

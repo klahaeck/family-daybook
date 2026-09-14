@@ -10,8 +10,8 @@ import { cn } from "@/lib/utils";
 const navigation = [
   { href: "/#features", label: "Features" },
   { href: "/#how-it-works", label: "How it works" },
+  { href: "/agent-access", label: "Agent access" },
   { href: "/pricing", label: "Pricing" },
-  { href: "/#security", label: "Privacy" },
 ];
 
 function SessionControl({
@@ -114,12 +114,14 @@ export function MarketingShell({
               <Link href="/#features" className="text-muted-foreground hover:text-foreground">Features</Link>
               <Link href="/pricing" className="text-muted-foreground hover:text-foreground">Pricing</Link>
               <Link href="/co-parenting-recordkeeping" className="text-muted-foreground hover:text-foreground">Co-parenting records</Link>
+              <Link href="/agent-access" className="text-muted-foreground hover:text-foreground">Agent access</Link>
               <SessionControl
                 signedIn={signedIn}
                 className="text-left text-muted-foreground hover:text-foreground"
               />
               <Link href="/privacy" className="text-muted-foreground hover:text-foreground">Privacy</Link>
               <Link href="/terms" className="text-muted-foreground hover:text-foreground">Terms of use</Link>
+              <Link href="/support" className="text-muted-foreground hover:text-foreground">Support</Link>
             </nav>
           </div>
           <div className="mt-10 flex flex-col gap-3 border-t pt-6 text-xs leading-5 text-muted-foreground sm:flex-row sm:items-start sm:justify-between">

@@ -8,7 +8,7 @@ import {
 } from "@modelcontextprotocol/server";
 import { verifyClerkToken } from "@clerk/mcp-tools/next";
 import { clerkClient } from "@clerk/nextjs/server";
-import { createMcpHandler, getPublicOrigin, withMcpAuth } from "mcp-handler";
+import { createMcpHandler, withMcpAuth } from "mcp-handler";
 import { z } from "zod";
 
 import {
@@ -27,27 +27,17 @@ import {
   careEntryUpdateSchema,
   dailyLogNotesSchema,
 } from "@/lib/domain/schemas";
+import {
+  getDaybookTool,
+  isDaybookToolName,
+  TOOL_SCOPES,
+  type DaybookToolName,
+} from "@/lib/mcp/catalog";
+import { getSiteUrl } from "@/lib/metadata/site-url";
 import { getRepository, getRequestContextForIdentity } from "@/lib/repository";
 import type { RequestContext } from "@/lib/repository/repository";
 
-export const DAYBOOK_SCOPES = {
-  read: "daybook:read",
-  write: "daybook:write",
-  finalize: "daybook:finalize",
-} as const;
-
-export const TOOL_SCOPES: Record<string, string> = {
-  get_daybook_context: DAYBOOK_SCOPES.read,
-  get_day: DAYBOOK_SCOPES.read,
-  get_care_entry: DAYBOOK_SCOPES.read,
-  create_care_entry: DAYBOOK_SCOPES.write,
-  update_care_entry: DAYBOOK_SCOPES.write,
-  update_day_notes: DAYBOOK_SCOPES.write,
-  preview_care_entry_correction: DAYBOOK_SCOPES.write,
-  confirm_care_entry_correction: DAYBOOK_SCOPES.write,
-  preview_day_finalization: DAYBOOK_SCOPES.finalize,
-  confirm_day_finalization: DAYBOOK_SCOPES.finalize,
-};
+export { DAYBOOK_SCOPES, TOOL_SCOPES } from "@/lib/mcp/catalog";
 
 const mutationId = z.string().uuid();
 const version = z.string().length(64);
@@ -128,7 +118,7 @@ function failure(error: unknown) {
 
 async function serviceFor(
   ctx: ToolContext,
-  toolName: string,
+  toolName: DaybookToolName,
   input: Record<string, unknown>,
 ) {
   const authInfo = ctx.http?.authInfo;
@@ -174,36 +164,19 @@ async function runTool<T>(work: () => Promise<T>, summary: (value: T) => string)
   }
 }
 
-const readAnnotations = {
-  readOnlyHint: true,
-  destructiveHint: false,
-  idempotentHint: true,
-  openWorldHint: false,
-};
-const writeAnnotations = {
-  readOnlyHint: false,
-  destructiveHint: false,
-  idempotentHint: true,
-  openWorldHint: false,
-};
-const confirmedAnnotations = {
-  readOnlyHint: false,
-  destructiveHint: true,
-  idempotentHint: true,
-  openWorldHint: false,
-};
+function registrationMetadata(name: DaybookToolName) {
+  const { title, description, annotations } = getDaybookTool(name);
+  return { title, description, annotations };
+}
 
 const rawHandler = createMcpHandler(
   (server) => {
     server.registerTool(
       "get_daybook_context",
       {
-        title: "Get Daybook Context",
-        description:
-          "Get the authorized member role, workspace timezone, local date, and active child/caregiver references.",
+        ...registrationMetadata("get_daybook_context"),
         inputSchema: z.object({}),
         outputSchema,
-        annotations: readAnnotations,
       },
       async (input, ctx) =>
         runTool(
@@ -215,12 +188,9 @@ const rawHandler = createMcpHandler(
     server.registerTool(
       "get_day",
       {
-        title: "Get Day",
-        description:
-          "Get a visible care day with tasks, entries, completion, and its concurrency version.",
+        ...registrationMetadata("get_day"),
         inputSchema: z.object({ localDate: z.string().date() }),
         outputSchema,
-        annotations: readAnnotations,
       },
       async (input, ctx) =>
         runTool(
@@ -232,12 +202,9 @@ const rawHandler = createMcpHandler(
     server.registerTool(
       "get_care_entry",
       {
-        title: "Get Care Entry",
-        description:
-          "Get a visible care record, its current version, and revision history.",
+        ...registrationMetadata("get_care_entry"),
         inputSchema: z.object({ recordId: z.string().min(1) }),
         outputSchema,
-        annotations: readAnnotations,
       },
       async (input, ctx) =>
         runTool(
@@ -252,12 +219,9 @@ const rawHandler = createMcpHandler(
     server.registerTool(
       "create_care_entry",
       {
-        title: "Create Care Entry",
-        description:
-          "Create a routine, special-arrangement, or factual custom care entry.",
+        ...registrationMetadata("create_care_entry"),
         inputSchema: daybookCreateCareEntrySchema.extend({ operationId: mutationId }),
         outputSchema,
-        annotations: writeAnnotations,
       },
       async (input, ctx) =>
         runTool(
@@ -272,14 +236,12 @@ const rawHandler = createMcpHandler(
     server.registerTool(
       "update_care_entry",
       {
-        title: "Update Care Entry",
-        description: "Update an existing record while its care day is open.",
+        ...registrationMetadata("update_care_entry"),
         inputSchema: careEntryUpdateSchema.safeExtend({
           recordVersion: version,
           operationId: mutationId,
         }),
         outputSchema,
-        annotations: writeAnnotations,
       },
       async (input, ctx) =>
         runTool(
@@ -294,14 +256,12 @@ const rawHandler = createMcpHandler(
     server.registerTool(
       "update_day_notes",
       {
-        title: "Update Day Notes",
-        description: "Replace notes on an open care day.",
+        ...registrationMetadata("update_day_notes"),
         inputSchema: dailyLogNotesSchema.extend({
           dayVersion: version,
           operationId: mutationId,
         }),
         outputSchema,
-        annotations: writeAnnotations,
       },
       async (input, ctx) =>
         runTool(
@@ -316,15 +276,12 @@ const rawHandler = createMcpHandler(
     server.registerTool(
       "preview_care_entry_correction",
       {
-        title: "Preview Care Entry Correction",
-        description:
-          "Preview a correction to a finalized record and issue a five-minute confirmation handle.",
+        ...registrationMetadata("preview_care_entry_correction"),
         inputSchema: careEntryCorrectionSchema.safeExtend({
           recordVersion: version,
           operationId: mutationId,
         }),
         outputSchema,
-        annotations: writeAnnotations,
       },
       async (input, ctx) =>
         runTool(
@@ -340,15 +297,12 @@ const rawHandler = createMcpHandler(
     server.registerTool(
       "confirm_care_entry_correction",
       {
-        title: "Confirm Care Entry Correction",
-        description:
-          "Consume a correction confirmation handle and append the unchanged proposed revision.",
+        ...registrationMetadata("confirm_care_entry_correction"),
         inputSchema: z.object({
           confirmationHandle: handle,
           operationId: mutationId,
         }),
         outputSchema,
-        annotations: confirmedAnnotations,
       },
       async (input, ctx) =>
         runTool(
@@ -363,16 +317,13 @@ const rawHandler = createMcpHandler(
     server.registerTool(
       "preview_day_finalization",
       {
-        title: "Preview Day Finalization",
-        description:
-          "Return the exact open-day summary and a five-minute confirmation handle.",
+        ...registrationMetadata("preview_day_finalization"),
         inputSchema: z.object({
           localDate: z.string().date(),
           dayVersion: version,
           operationId: mutationId,
         }),
         outputSchema,
-        annotations: writeAnnotations,
       },
       async (input, ctx) =>
         runTool(
@@ -387,15 +338,12 @@ const rawHandler = createMcpHandler(
     server.registerTool(
       "confirm_day_finalization",
       {
-        title: "Confirm Day Finalization",
-        description:
-          "Consume a finalization handle and finalize the exact unchanged day it represents.",
+        ...registrationMetadata("confirm_day_finalization"),
         inputSchema: z.object({
           confirmationHandle: handle,
           operationId: mutationId,
         }),
         outputSchema,
-        annotations: confirmedAnnotations,
       },
       async (input, ctx) =>
         runTool(
@@ -443,9 +391,13 @@ async function requestedTool(request: Request): Promise<string | undefined> {
 
 export async function daybookScopeGate(request: Request) {
   const toolName = await requestedTool(request);
-  const requiredScope = toolName ? TOOL_SCOPES[toolName] : undefined;
+  const requiredScope =
+    toolName && isDaybookToolName(toolName) ? TOOL_SCOPES[toolName] : undefined;
   if (requiredScope && !request.auth?.scopes.includes(requiredScope)) {
-    const resourceMetadataUrl = `${getPublicOrigin(request)}/.well-known/oauth-protected-resource/mcp`;
+    const resourceMetadataUrl = new URL(
+      "/.well-known/oauth-protected-resource/mcp",
+      getSiteUrl(),
+    ).toString();
     return bearerAuthChallengeResponse(
       new OAuthError(
         OAuthErrorCode.InsufficientScope,
@@ -497,7 +449,7 @@ async function authorizedScopeGate(request: Request) {
 const authenticatedHandler = withMcpAuth(
   authorizedScopeGate,
   async (request, token) => {
-    const resourceUrl = `${getPublicOrigin(request)}/mcp`;
+    const resourceUrl = new URL("/mcp", getSiteUrl()).toString();
     const authState = await (await clerkClient()).authenticateRequest(request, {
       acceptsToken: "oauth_token",
       audience: resourceUrl,

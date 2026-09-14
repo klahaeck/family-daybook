@@ -22,6 +22,8 @@ It is a recordkeeping tool, not legal advice, an emergency service, or a guarant
 - Configurable owner-only hard purge with typed confirmation and content-free tombstones
 - MongoDB Atlas persistence plus a clearly marked in-memory local demo mode
 - OAuth-protected, stateless Streamable HTTP MCP tools for authorized daily care records at `/mcp`
+- Public agent documentation, structured capability metadata, and feature evidence pages
+- Private support delivery through a Turnstile-protected web form and Resend
 
 ## Local development
 
@@ -53,9 +55,11 @@ Copy `.env.example` to `.env.local` for development. Configure the same values i
 1. Create a dedicated MongoDB Atlas database and least-privilege application user.
 2. Create a Clerk application, enable self-service registration, and make MFA available to every owner and reviewer.
 3. Create a Vercel Private Blob store.
-4. Deploy to Vercel. Workflow SDK routes are generated during the Next.js build.
-5. Sign in with each owner account. Its first login bootstraps a separate private workspace and initial routine template. A user matching a pending reviewer invitation joins that workspace as a read-only reviewer instead.
-6. Replace placeholder child and caregiver names in Settings before entering real records.
+4. Set `NEXT_PUBLIC_APP_URL` to `https://www.myfamilydaybook.com`; production builds reject any other canonical origin. Keep the apex-to-`www` redirect enabled.
+5. Configure Resend and Cloudflare Turnstile for the private `/support` form.
+6. Deploy to Vercel. Workflow SDK routes are generated during the Next.js build.
+7. Sign in with each owner account. Its first login bootstraps a separate private workspace and initial routine template. A user matching a pending reviewer invitation joins that workspace as a read-only reviewer instead.
+8. Replace placeholder child and caregiver names in Settings before entering real records.
 
 Vercel Workflows use the deployment’s managed workflow backend automatically. Private Blob supports either the legacy read/write token or Vercel OIDC plus a store ID.
 
@@ -89,7 +93,7 @@ Invited reviewers inherit the workspace owner's billing access. A reviewer is ne
 
 ## Authorized MCP access
 
-The remote MCP endpoint is `https://YOUR_DEPLOYMENT/mcp`. It uses stateless Streamable HTTP, Clerk OAuth, the same MongoDB workspace membership and billing checks as the web app, and these custom Clerk scopes:
+The remote MCP endpoint is `https://www.myfamilydaybook.com/mcp`. Public connection guidance is available at `/agent-access`, with a machine-readable summary at `/agent-capabilities.json`. The endpoint uses stateless Streamable HTTP, Clerk OAuth, the same MongoDB workspace membership and billing checks as the web app, and these custom Clerk scopes:
 
 - `daybook:read` for context, days, records, and revision history
 - `daybook:write` for open-day entries/notes and confirmed finalized-record corrections
@@ -108,3 +112,5 @@ OAuth discovery is published at `/.well-known/oauth-protected-resource/mcp` and 
 MCP is deliberately unavailable unless both Clerk and MongoDB are configured. The unauthenticated in-memory demo is never exposed. Mutations require UUID operation IDs, version-bound updates, and five-minute one-time confirmations for finalization and finalized-record corrections.
 
 The integration follows the [MCP 2026-07-28 transport model](https://blog.modelcontextprotocol.io/posts/2026-07-28/) and [Clerk's Next.js MCP guidance](https://clerk.com/docs/nextjs/guides/ai/mcp/build-mcp-server).
+
+Search-engine setup, IndexNow submission, MCP Registry validation, and OpenAI directory preparation are documented in `docs/agent-distribution.md`. Reviewer-ready OpenAI listing copy and tests are in `docs/openai-plugin-submission.md`.
