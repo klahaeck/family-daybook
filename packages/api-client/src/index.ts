@@ -44,7 +44,7 @@ import {
   timelineSchema,
   type ApiErrorBody,
 } from "@family-daybook/contracts";
-import type { z } from "zod";
+import { ZodError, type z } from "zod";
 
 export type TokenProvider = (options?: { skipCache?: boolean }) => Promise<string | null>;
 export type OperationIdProvider = () => string;
@@ -60,6 +60,23 @@ export class DaybookApiError extends Error {
     super(message);
     this.name = "DaybookApiError";
   }
+}
+
+function parseInput<S extends z.ZodType>(schema: S, input: unknown): z.infer<S> {
+  const result = schema.safeParse(input);
+  if (result.success) return result.data;
+
+  const fieldErrors: Record<string, string[]> = {};
+  for (const issue of result.error.issues) {
+    const field = issue.path.join(".") || "input";
+    (fieldErrors[field] ??= []).push(issue.message);
+  }
+  throw new DaybookApiError(
+    400,
+    "VALIDATION_ERROR",
+    "Check the entered information and try again.",
+    fieldErrors,
+  );
 }
 
 type JsonRequest = Omit<RequestInit, "body"> & {
@@ -140,7 +157,19 @@ export class DaybookApiClient {
     const data = payload && typeof payload === "object" && "data" in payload
       ? (payload as { data: unknown }).data
       : payload;
-    const parsed = (schema ? schema.parse(data) : data) as T;
+    let parsed: T;
+    try {
+      parsed = (schema ? schema.parse(data) : data) as T;
+    } catch (error) {
+      if (error instanceof ZodError) {
+        throw new DaybookApiError(
+          502,
+          "INTERNAL_ERROR",
+          "Family Daybook received an unexpected response. Please try again or update the app.",
+        );
+      }
+      throw error;
+    }
     if (operationFingerprint && this.pendingOperationIds.get(operationFingerprint) === idempotencyKey) {
       this.pendingOperationIds.delete(operationFingerprint);
     }
@@ -151,7 +180,7 @@ export class DaybookApiClient {
   getDay = (date: string) => this.json(`/api/v1/days/${encodeURIComponent(date)}`, { schema: daySchema });
   recordRoutine = (date: string, input: unknown, version: string, idempotencyKey?: string) =>
     this.json(`/api/v1/days/${encodeURIComponent(date)}/routine-records`, {
-      method: "POST", body: routineRecordInputSchema.parse(input), version, idempotencyKey, schema: routineRecordResultSchema,
+      method: "POST", body: parseInput(routineRecordInputSchema, input), version, idempotencyKey, schema: routineRecordResultSchema,
     });
   updateDayNotes = (date: string, notes: string, version: string, idempotencyKey?: string) =>
     this.json(`/api/v1/days/${encodeURIComponent(date)}/notes`, { method: "PUT", body: { notes }, version, idempotencyKey, schema: dayMutationResultSchema });
@@ -159,28 +188,28 @@ export class DaybookApiClient {
     this.json(`/api/v1/days/${encodeURIComponent(date)}/finalize`, { method: "POST", body: {}, version, idempotencyKey, schema: dayMutationResultSchema });
 
   listCareRecords = (cursor?: string) => this.json(`/api/v1/care-records${queryString({ cursor })}`, { schema: listCareRecordsSchema });
-  createCareRecord = (input: unknown, version: string, idempotencyKey?: string) => this.json("/api/v1/care-records", { method: "POST", body: customCareRecordInputSchema.parse(input), version, idempotencyKey, schema: careEntryViewSchema });
+  createCareRecord = (input: unknown, version: string, idempotencyKey?: string) => this.json("/api/v1/care-records", { method: "POST", body: parseInput(customCareRecordInputSchema, input), version, idempotencyKey, schema: careEntryViewSchema });
   getCareRecord = (id: string) => this.json(`/api/v1/care-records/${encodeURIComponent(id)}`, { schema: careEntryViewSchema });
-  updateCareRecord = (id: string, input: unknown, version: string, idempotencyKey?: string) => this.json(`/api/v1/care-records/${encodeURIComponent(id)}`, { method: "PATCH", body: careRecordUpdateInputSchema.parse(input), version, idempotencyKey, schema: careEntryViewSchema });
-  correctCareRecord = (id: string, input: unknown, version: string, idempotencyKey?: string) => this.json(`/api/v1/care-records/${encodeURIComponent(id)}/corrections`, { method: "POST", body: careCorrectionInputSchema.parse(input), version, idempotencyKey });
+  updateCareRecord = (id: string, input: unknown, version: string, idempotencyKey?: string) => this.json(`/api/v1/care-records/${encodeURIComponent(id)}`, { method: "PATCH", body: parseInput(careRecordUpdateInputSchema, input), version, idempotencyKey, schema: careEntryViewSchema });
+  correctCareRecord = (id: string, input: unknown, version: string, idempotencyKey?: string) => this.json(`/api/v1/care-records/${encodeURIComponent(id)}/corrections`, { method: "POST", body: parseInput(careCorrectionInputSchema, input), version, idempotencyKey });
 
   listAppointments = () => this.json("/api/v1/appointments", { schema: listAppointmentsSchema });
-  createAppointment = (input: unknown, idempotencyKey?: string) => this.json("/api/v1/appointments", { method: "POST", body: appointmentInputSchema.parse(input), idempotencyKey, schema: appointmentSchema });
+  createAppointment = (input: unknown, idempotencyKey?: string) => this.json("/api/v1/appointments", { method: "POST", body: parseInput(appointmentInputSchema, input), idempotencyKey, schema: appointmentSchema });
   listIncidents = () => this.json("/api/v1/incidents", { schema: listIncidentsSchema });
-  createIncident = (input: unknown, idempotencyKey?: string) => this.json("/api/v1/incidents", { method: "POST", body: incidentInputSchema.parse(input), idempotencyKey, schema: incidentSchema });
-  correctRecord = (input: unknown, version: string, idempotencyKey?: string) => this.json("/api/v1/records/corrections", { method: "POST", body: correctionInputSchema.parse(input), version, idempotencyKey });
+  createIncident = (input: unknown, idempotencyKey?: string) => this.json("/api/v1/incidents", { method: "POST", body: parseInput(incidentInputSchema, input), idempotencyKey, schema: incidentSchema });
+  correctRecord = (input: unknown, version: string, idempotencyKey?: string) => this.json("/api/v1/records/corrections", { method: "POST", body: parseInput(correctionInputSchema, input), version, idempotencyKey });
   getRecordBundle = (recordType: "care_entry" | "appointment" | "incident", id: string) => this.json(`/api/v1/records/${encodeURIComponent(recordType)}/${encodeURIComponent(id)}`, { schema: recordBundleSchema });
-  purgeRecord = (input: unknown, idempotencyKey?: string) => this.json<void>("/api/v1/records/purge", { method: "POST", body: purgeInputSchema.parse(input), idempotencyKey });
+  purgeRecord = (input: unknown, idempotencyKey?: string) => this.json<void>("/api/v1/records/purge", { method: "POST", body: parseInput(purgeInputSchema, input), idempotencyKey });
 
   getTimeline = (filters: { cursor?: string; from?: string; to?: string; childId?: string; kind?: string } = {}) => this.json(`/api/v1/timeline${queryString(filters)}`, { schema: timelineSchema });
   listSpecialDays = () => this.json("/api/v1/special-days", { schema: listSpecialDaysSchema });
   getSpecialDay = (id: string) => this.json(`/api/v1/special-days/${encodeURIComponent(id)}`, { schema: specialDayDetailSchema });
-  createSpecialDay = (input: unknown, idempotencyKey?: string) => this.json("/api/v1/special-days", { method: "POST", body: specialDayInputSchema.parse(input), idempotencyKey, schema: specialDayCreateResultSchema });
-  updateSpecialDay = (id: string, input: unknown, version: string, idempotencyKey?: string) => this.json(`/api/v1/special-days/${encodeURIComponent(id)}`, { method: "PATCH", body: specialDayUpdateInputSchema.parse(input), version, idempotencyKey, schema: specialDayDetailSchema });
-  correctSpecialDay = (id: string, input: unknown, version: string, idempotencyKey?: string) => this.json(`/api/v1/special-days/${encodeURIComponent(id)}/corrections`, { method: "POST", body: specialDayCorrectionInputSchema.parse(input), version, idempotencyKey, schema: recordRevisionSchema });
+  createSpecialDay = (input: unknown, idempotencyKey?: string) => this.json("/api/v1/special-days", { method: "POST", body: parseInput(specialDayInputSchema, input), idempotencyKey, schema: specialDayCreateResultSchema });
+  updateSpecialDay = (id: string, input: unknown, version: string, idempotencyKey?: string) => this.json(`/api/v1/special-days/${encodeURIComponent(id)}`, { method: "PATCH", body: parseInput(specialDayUpdateInputSchema, input), version, idempotencyKey, schema: specialDayDetailSchema });
+  correctSpecialDay = (id: string, input: unknown, version: string, idempotencyKey?: string) => this.json(`/api/v1/special-days/${encodeURIComponent(id)}/corrections`, { method: "POST", body: parseInput(specialDayCorrectionInputSchema, input), version, idempotencyKey, schema: recordRevisionSchema });
 
   listReports = () => this.json("/api/v1/reports", { schema: listReportsSchema });
-  createReport = (input: unknown, idempotencyKey?: string) => this.json("/api/v1/reports", { method: "POST", body: reportInputSchema.parse(input), idempotencyKey, schema: reportSchema });
+  createReport = (input: unknown, idempotencyKey?: string) => this.json("/api/v1/reports", { method: "POST", body: parseInput(reportInputSchema, input), idempotencyKey, schema: reportSchema });
   getReport = (id: string) => this.json(`/api/v1/reports/${encodeURIComponent(id)}`, { schema: reportSchema });
   async downloadReport(id: string, format: "pdf" | "zip"): Promise<Uint8Array> {
     const response = await this.fetch(`/api/v1/reports/${encodeURIComponent(id)}/download?format=${format}`, { headers: { Accept: format === "pdf" ? "application/pdf" : "application/zip" } });
@@ -189,14 +218,14 @@ export class DaybookApiClient {
   }
 
   getSettings = () => this.json("/api/v1/settings", { schema: settingsSchema });
-  updateSettings = (input: unknown, idempotencyKey?: string) => this.json("/api/v1/settings", { method: "PUT", body: settingsUpdateInputSchema.parse(input), idempotencyKey, schema: settingsSchema });
-  inviteReviewer = (input: unknown, idempotencyKey?: string) => this.json("/api/v1/reviewers", { method: "POST", body: reviewerInviteInputSchema.parse(input), idempotencyKey, schema: reviewerSchema });
+  updateSettings = (input: unknown, idempotencyKey?: string) => this.json("/api/v1/settings", { method: "PUT", body: parseInput(settingsUpdateInputSchema, input), idempotencyKey, schema: settingsSchema });
+  inviteReviewer = (input: unknown, idempotencyKey?: string) => this.json("/api/v1/reviewers", { method: "POST", body: parseInput(reviewerInviteInputSchema, input), idempotencyKey, schema: reviewerSchema });
   revokeReviewer = (id: string, idempotencyKey?: string) => this.json<void>(`/api/v1/reviewers/${encodeURIComponent(id)}`, { method: "DELETE", idempotencyKey });
-  createBillingLinkIntent = (input: unknown, idempotencyKey?: string) => this.json("/api/v1/billing/link-intents", { method: "POST", body: billingLinkIntentInputSchema.parse(input), idempotencyKey, schema: billingLinkIntentSchema });
-  prepareAttachment = (input: unknown, idempotencyKey?: string) => this.json("/api/v1/attachments/prepare", { method: "POST", body: attachmentPrepareInputSchema.parse(input), idempotencyKey, schema: preparedAttachmentSchema });
-  finalizeAttachment = (claim: unknown, idempotencyKey?: string) => this.json("/api/v1/attachments/finalize", { method: "POST", body: attachmentClaimSchema.parse(claim), idempotencyKey, schema: attachmentSchema });
+  createBillingLinkIntent = (input: unknown, idempotencyKey?: string) => this.json("/api/v1/billing/link-intents", { method: "POST", body: parseInput(billingLinkIntentInputSchema, input), idempotencyKey, schema: billingLinkIntentSchema });
+  prepareAttachment = (input: unknown, idempotencyKey?: string) => this.json("/api/v1/attachments/prepare", { method: "POST", body: parseInput(attachmentPrepareInputSchema, input), idempotencyKey, schema: preparedAttachmentSchema });
+  finalizeAttachment = (claim: unknown, idempotencyKey?: string) => this.json("/api/v1/attachments/finalize", { method: "POST", body: parseInput(attachmentClaimSchema, claim), idempotencyKey, schema: attachmentSchema });
   async uploadAttachment(input: unknown, bytes: Uint8Array) {
-    const parsedInput = attachmentPrepareInputSchema.parse(input);
+    const parsedInput = parseInput(attachmentPrepareInputSchema, input);
     const fingerprint = JSON.stringify(parsedInput);
     const pending = this.pendingAttachmentUploads.get(fingerprint) ?? {
       prepareOperationId: this.createOperationId(),
@@ -234,5 +263,5 @@ export class DaybookApiClient {
     if (!response.ok) throw new DaybookApiError(response.status, "INTERNAL_ERROR", "Unable to download the attachment.");
     return new Uint8Array(await response.arrayBuffer());
   }
-  deleteAccount = (input: unknown, idempotencyKey?: string) => this.json("/api/v1/account", { method: "DELETE", body: accountDeleteInputSchema.parse(input), idempotencyKey, schema: accountDeleteResultSchema });
+  deleteAccount = (input: unknown, idempotencyKey?: string) => this.json("/api/v1/account", { method: "DELETE", body: parseInput(accountDeleteInputSchema, input), idempotencyKey, schema: accountDeleteResultSchema });
 }

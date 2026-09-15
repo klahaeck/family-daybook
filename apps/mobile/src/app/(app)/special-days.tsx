@@ -4,9 +4,10 @@ import { useState } from "react";
 import { Alert, Text } from "react-native";
 
 import { ActionButton, Body, Card, ChoiceRow, Field, Heading, InlineNotice, Screen, ScreenState } from "@/components/ui";
+import { useAppTheme } from "@/mobile-theme";
 import { useApi, useDaybookSession } from "@/providers";
-import { colors } from "@/theme";
-import { friendlyError, todayLocalDate } from "@/utils";
+import { specialDayCreationPlan, specialDayInitialDate } from "@/special-day-creation";
+import { friendlyError, invalidateRecordQueries, todayLocalDate } from "@/utils";
 
 function errorCode(error: unknown) {
   if (!error || typeof error !== "object" || !("code" in error)) return undefined;
@@ -14,36 +15,42 @@ function errorCode(error: unknown) {
 }
 
 export default function SpecialDaysScreen() {
+  const { colors } = useAppTheme();
   const api = useApi();
   const queryClient = useQueryClient();
   const session = useDaybookSession();
   const canManage = Boolean(session.data?.capabilities.manageSpecialDays);
   const specialDays = useQuery({ queryKey: ["special-days"], queryFn: api.listSpecialDays, enabled: canManage });
+  const settings = useQuery({ queryKey: ["settings"], queryFn: api.getSettings, enabled: canManage });
   const [selectedId, setSelectedId] = useState<string>();
-  const [date, setDate] = useState(todayLocalDate());
+  const [date, setDate] = useState(specialDayInitialDate(session.data?.currentLocalDate, todayLocalDate()));
   const [title, setTitle] = useState("");
   const [note, setNote] = useState("");
-  const [childId, setChildId] = useState<string>();
   const [caregiverId, setCaregiverId] = useState<string>();
   const create = useMutation({
     mutationFn: () => {
-      if (!childId || !caregiverId) throw new Error("Choose a child and caregiver.");
+      if (!caregiverId || !specialDays.data || !settings.data) {
+        throw new Error("Choose a caregiver and wait for the daily routine to load.");
+      }
+      const plan = specialDayCreationPlan({
+        caregiverId,
+        children: specialDays.data.children,
+        date,
+        template: settings.data.template,
+      });
       return api.createSpecialDay({
         startDate: date,
         endDate: date,
         title,
         note: note.trim() || undefined,
-        assignments: [{ childId, caregiverIds: [caregiverId] }],
-        days: [{ localDate: date, tasks: [] }],
+        assignments: plan.assignments,
+        days: [{ localDate: date, tasks: plan.tasks }],
       });
     },
     onSuccess: async () => {
       setTitle("");
       setNote("");
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["special-days"] }),
-        queryClient.invalidateQueries({ queryKey: ["day"] }),
-      ]);
+      await invalidateRecordQueries(queryClient, ["special-days"], ["day"]);
     },
   });
 
@@ -58,19 +65,23 @@ export default function SpecialDaysScreen() {
         <Field label="Date (YYYY-MM-DD)" value={date} onChangeText={setDate} autoCapitalize="none" />
         <Field label="Title" value={title} onChangeText={setTitle} />
         <Field label="Notes (optional)" value={note} onChangeText={setNote} multiline />
-        <Body muted>Child</Body>
-        {specialDays.data?.children.map((child) => (
-          <ChoiceRow key={child.id} label={child.displayName} selected={childId === child.id} onPress={() => setChildId(child.id)} />
-        ))}
-        <Body muted>Caregiver</Body>
+        <Body muted>Children</Body>
+        <Body>
+          {specialDays.data?.children.length
+            ? specialDays.data.children.map((child) => child.displayName).join(", ")
+            : "No active children"}
+        </Body>
+        <Body muted>The selected caregiver will be assigned to every active child. Their applicable routine tasks will be copied into this special day.</Body>
+        <Body muted>Caregiver for all children</Body>
         {specialDays.data?.caregivers.map((caregiver) => (
           <ChoiceRow key={caregiver.id} label={`${caregiver.displayName} · ${caregiver.relationship}`} selected={caregiverId === caregiver.id} onPress={() => setCaregiverId(caregiver.id)} />
         ))}
         {specialDays.data && (!specialDays.data.children.length || !specialDays.data.caregivers.length) ? <InlineNotice>Add an active child and caregiver in Settings first.</InlineNotice> : null}
+        <ScreenState loading={settings.isPending} error={settings.error} onRetry={() => void settings.refetch()} />
         {create.error ? <Text accessibilityLiveRegion="polite" style={{ color: colors.danger }}>{friendlyError(create.error)}</Text> : null}
         <ActionButton
           label={create.isPending ? "Saving…" : "Create special day"}
-          disabled={create.isPending || title.trim().length < 2 || !childId || !caregiverId}
+          disabled={create.isPending || settings.isPending || !settings.data || title.trim().length < 2 || !specialDays.data?.children.length || !caregiverId}
           onPress={() => create.mutate()}
         />
       </Card>
@@ -128,6 +139,7 @@ function LoadedSpecialDayEditor({ day, childOptions, caregivers, onClose }: {
   caregivers: Array<{ id: string; displayName: string }>;
   onClose: () => void;
 }) {
+  const { colors } = useAppTheme();
   const api = useApi();
   const queryClient = useQueryClient();
   const [title, setTitle] = useState(day.title);
@@ -142,10 +154,7 @@ function LoadedSpecialDayEditor({ day, childOptions, caregivers, onClose }: {
     }, day.recordVersion),
     onSuccess: async (saved) => {
       queryClient.setQueryData(["special-day", day.id], saved);
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["special-days"] }),
-        queryClient.invalidateQueries({ queryKey: ["day"] }),
-      ]);
+      await invalidateRecordQueries(queryClient, ["special-days"], ["day"]);
     },
   });
   const childName = (id: string) => childOptions.find((child) => child.id === id)?.displayName ?? "Unknown child";

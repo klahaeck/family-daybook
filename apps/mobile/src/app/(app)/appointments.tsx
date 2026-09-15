@@ -5,14 +5,15 @@ import { useState } from "react";
 import { Text } from "react-native";
 
 import { ActionButton, Body, Card, ChoiceRow, Field, Heading, Screen, ScreenState } from "@/components/ui";
+import { useAppTheme } from "@/mobile-theme";
 import { useApi, useDaybookSession } from "@/providers";
-import { colors } from "@/theme";
-import { friendlyError } from "@/utils";
+import { formatDateTime, friendlyError, invalidateRecordQueries } from "@/utils";
 
 const defaultScheduledAt = new Date(Date.now() + 86_400_000).toISOString();
 const appointmentStatuses: Appointment["status"][] = ["scheduled", "attended", "late", "missed", "cancelled", "rescheduled"];
 
 export default function AppointmentsScreen() {
+  const { colors } = useAppTheme();
   const api = useApi();
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -51,7 +52,7 @@ export default function AppointmentsScreen() {
     setArrivedAt("");
     setCancellationDetails("");
     setNotes("");
-    await queryClient.invalidateQueries({ queryKey: ["appointments"] });
+    await invalidateRecordQueries(queryClient, ["appointments"]);
   } });
   return (
     <Screen title="Appointments" subtitle="Track scheduled care and attendance.">
@@ -75,7 +76,7 @@ export default function AppointmentsScreen() {
         <ActionButton label={create.isPending ? "Saving…" : "Add appointment"} disabled={create.isPending || title.trim().length < 2 || childIds.length === 0 || caregiverIds.length === 0} onPress={() => create.mutate()} />
       </Card> : null}
       <ScreenState loading={appointments.isPending} error={appointments.error} onRetry={() => void appointments.refetch()} empty={appointments.data?.length === 0 ? "No appointments yet." : undefined} />
-      {appointments.data?.map((item) => <Card key={item.id}><Heading>{item.title}</Heading><Body>{new Date(item.scheduledAt).toLocaleString()}</Body><Body muted>{item.status}{item.provider ? ` · ${item.provider}` : ""}</Body>{item.location ? <Body>{item.location}</Body> : null}{item.arrivedAt ? <Body>Arrived {new Date(item.arrivedAt).toLocaleString()}</Body> : null}{item.cancellationDetails ? <Body>Cancellation/rescheduling: {item.cancellationDetails}</Body> : null}<ActionButton label="View details" secondary onPress={() => router.push({ pathname: "/records/[recordType]/[id]", params: { recordType: "appointment", id: item.id } })} /></Card>)}
+      {appointments.data?.map((item) => <Card key={item.id}><Heading>{item.title}</Heading><Body>{formatDateTime(item.scheduledAt, session.data?.workspace.timezone ?? "UTC")}</Body><Body muted>{item.status}{item.provider ? ` · ${item.provider}` : ""}</Body>{item.location ? <Body>{item.location}</Body> : null}{item.arrivedAt ? <Body>Arrived {formatDateTime(item.arrivedAt, session.data?.workspace.timezone ?? "UTC")}</Body> : null}{item.cancellationDetails ? <Body>Cancellation/rescheduling: {item.cancellationDetails}</Body> : null}<ActionButton label="View details" secondary onPress={() => router.push({ pathname: "/records/[recordType]/[id]", params: { recordType: "appointment", id: item.id } })} /></Card>)}
     </Screen>
   );
 }

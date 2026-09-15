@@ -3,11 +3,12 @@ import { useState } from "react";
 import { Alert, Text } from "react-native";
 
 import { ActionButton, Body, Card, Field, Heading, InlineNotice, Screen, ScreenState } from "@/components/ui";
+import { useAppTheme } from "@/mobile-theme";
 import { useApi, useDaybookSession } from "@/providers";
-import { colors } from "@/theme";
 import { friendlyError } from "@/utils";
 
 export default function ReviewersScreen() {
+  const { colors } = useAppTheme();
   const api = useApi();
   const queryClient = useQueryClient();
   const session = useDaybookSession();

@@ -3,6 +3,7 @@ import {
   appointmentInputSchema,
   appointmentSchema,
   daySchema,
+  listIncidentsSchema,
 } from "@family-daybook/contracts";
 
 describe("mobile API contracts", () => {
@@ -75,5 +76,65 @@ describe("mobile API contracts", () => {
     expect(day.finalizedAt).toBe("2026-09-15T23:00:00.000Z");
     expect(day.specialArrangement?.assignments).toEqual([{ childId: "child_1", caregiverIds: ["caregiver_1"] }]);
     expect(day.specialArrangement?.tasks[0]).toMatchObject({ id: "task_1", label: "Library visit" });
+  });
+
+  it("normalizes nullable legacy care-entry relationship ids", () => {
+    const day = daySchema.parse({
+      localDate: "2026-09-15",
+      status: "open",
+      dayVersion: "version_1",
+      tasks: [],
+      careEntries: [{
+        id: "care_1",
+        dailyLogId: "daily_log_1",
+        templateItemId: "routine_item_1",
+        arrangementTaskId: null,
+        taskKey: "prepare_breakfast",
+        taskLabel: "Prepare breakfast",
+        childIds: ["child_1"],
+        caregiverIds: ["caregiver_1"],
+        status: "completed",
+        occurredAt: "2026-09-15T13:00:00.000Z",
+        recordedAt: "2026-09-15T13:05:00.000Z",
+        currentRevisionId: "revision_1",
+        lateEntry: false,
+      }],
+      completion: { recorded: 1, total: 1, percent: 100 },
+    });
+
+    expect(day.careEntries[0]).toMatchObject({
+      templateItemId: "routine_item_1",
+      arrangementTaskId: undefined,
+    });
+  });
+
+  it("normalizes nullable and omitted legacy incident details", () => {
+    const result = listIncidentsSchema.parse({
+      incidents: [{
+        id: "incident_1",
+        category: "other",
+        occurredAt: "2026-09-15T13:00:00.000Z",
+        discoveredAt: null,
+        location: null,
+        childIds: ["child_1"],
+        witnesses: null,
+        observations: "The child slipped near the kitchen doorway.",
+        exactQuotes: null,
+        immediateActions: null,
+        outcome: null,
+        currentRevisionId: "revision_1",
+      }],
+      attachments: [],
+    });
+
+    expect(result.incidents[0]).toMatchObject({
+      discoveredAt: undefined,
+      location: undefined,
+      peoplePresent: [],
+      witnesses: [],
+      exactQuotes: undefined,
+      immediateActions: undefined,
+      outcome: undefined,
+    });
   });
 });

@@ -24,9 +24,9 @@ import {
   ScreenState,
 } from "@/components/ui";
 import { attachmentContentType, documentPickerTypes } from "@/attachment-picker";
+import { useAppTheme } from "@/mobile-theme";
 import { useApi, useDaybookSession } from "@/providers";
-import { colors } from "@/theme";
-import { friendlyError } from "@/utils";
+import { formatDateTime, friendlyError } from "@/utils";
 
 type RecordType = "care_entry" | "appointment" | "incident";
 type Attachment = RecordBundle["attachments"][number];
@@ -67,12 +67,12 @@ function safeFilename(name: string) {
   return name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(-120) || "attachment";
 }
 
-function DetailSummary({ record }: { record: RecordBundle["record"] }) {
+function DetailSummary({ record, timeZone }: { record: RecordBundle["record"]; timeZone: string }) {
   if (isCareEntry(record)) {
     return (
       <Card>
         <Heading>{record.taskLabel}</Heading>
-        <Body>{new Date(record.occurredAt).toLocaleString()}</Body>
+        <Body>{formatDateTime(record.occurredAt, timeZone)}</Body>
         <Body muted>{record.status.replace("_", " ")}{record.lateEntry ? " · late entry" : ""}</Body>
         {record.activityType ? <Body>{record.activityType}</Body> : null}
         {record.durationMinutes ? <Body>{record.durationMinutes} minutes</Body> : null}
@@ -84,10 +84,10 @@ function DetailSummary({ record }: { record: RecordBundle["record"] }) {
     return (
       <Card>
         <Heading>{record.title}</Heading>
-        <Body>{new Date(record.scheduledAt).toLocaleString()}</Body>
+        <Body>{formatDateTime(record.scheduledAt, timeZone)}</Body>
         <Body muted>{record.status.replace("_", " ")}{record.provider ? ` · ${record.provider}` : ""}</Body>
         {record.location ? <Body>{record.location}</Body> : null}
-        {record.arrivedAt ? <Body>Arrived {new Date(record.arrivedAt).toLocaleString()}</Body> : null}
+        {record.arrivedAt ? <Body>Arrived {formatDateTime(record.arrivedAt, timeZone)}</Body> : null}
         {record.cancellationDetails ? <Body>Cancellation/rescheduling: {record.cancellationDetails}</Body> : null}
         {record.notes ? <Body>{record.notes}</Body> : null}
       </Card>
@@ -96,7 +96,7 @@ function DetailSummary({ record }: { record: RecordBundle["record"] }) {
   return (
     <Card>
       <Heading>{record.category.replace("_", " ")}</Heading>
-      <Body>{new Date(record.occurredAt).toLocaleString()}</Body>
+      <Body>{formatDateTime(record.occurredAt, timeZone)}</Body>
       <Body>{record.observations}</Body>
       {record.location ? <Body muted>{record.location}</Body> : null}
       {record.immediateActions ? <Body>Immediate actions: {record.immediateActions}</Body> : null}
@@ -110,6 +110,7 @@ function CareEditor({ bundle, finalized, localDate }: {
   finalized: boolean;
   localDate: string;
 }) {
+  const { colors } = useAppTheme();
   const api = useApi();
   const queryClient = useQueryClient();
   const record = bundle.record as CareEntry;
@@ -206,6 +207,7 @@ function CareEditor({ bundle, finalized, localDate }: {
 }
 
 function TextCorrection({ bundle, recordType }: { bundle: RecordBundle; recordType: "appointment" | "incident" }) {
+  const { colors } = useAppTheme();
   const api = useApi();
   const queryClient = useQueryClient();
   const record = bundle.record;
@@ -234,14 +236,14 @@ function TextCorrection({ bundle, recordType }: { bundle: RecordBundle; recordTy
   );
 }
 
-function RevisionHistory({ revisions }: { revisions: RecordBundle["revisions"] }) {
+function RevisionHistory({ revisions, timeZone }: { revisions: RecordBundle["revisions"]; timeZone: string }) {
   return (
     <Card>
       <Heading>Revision history</Heading>
       {revisions.map((revision) => (
         <View key={revision.id} style={{ gap: 4 }}>
           <Body>Revision {revision.revisionNumber} · {revision.reason}</Body>
-          <Body muted>{new Date(revision.recordedAt).toLocaleString()} · {revision.hash.slice(0, 12)}…</Body>
+          <Body muted>{formatDateTime(revision.recordedAt, timeZone)} · {revision.hash.slice(0, 12)}…</Body>
           <Body muted>{JSON.stringify(revision.payload, null, 2)}</Body>
         </View>
       ))}
@@ -255,6 +257,7 @@ function Attachments({ attachments, recordType, recordId, canUpload }: {
   recordId: string;
   canUpload: boolean;
 }) {
+  const { colors } = useAppTheme();
   const api = useApi();
   const queryClient = useQueryClient();
   const share = useMutation({
@@ -323,6 +326,7 @@ function Attachments({ attachments, recordType, recordId, canUpload }: {
 }
 
 function PurgeRecord({ recordType, recordId }: { recordType: RecordType; recordId: string }) {
+  const { colors } = useAppTheme();
   const api = useApi();
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -386,12 +390,13 @@ export default function RecordDetailScreen() {
   }
   const title = recordType === "care_entry" ? "Care record" : recordType === "appointment" ? "Appointment" : "Incident";
   const canMutate = Boolean(session.data?.capabilities.mutateRecords);
+  const timeZone = session.data?.workspace.timezone ?? "UTC";
 
   return (
     <Screen title={title} subtitle="Review the current record, its immutable history, and supporting files.">
       <ScreenState loading={bundle.isPending} error={bundle.error} onRetry={() => void bundle.refetch()} />
       {bundle.data ? <>
-        <DetailSummary record={bundle.data.record} />
+        <DetailSummary record={bundle.data.record} timeZone={timeZone} />
         {recordType === "care_entry" && canMutate ? (
           <>
             <ScreenState loading={day.isPending} error={day.error} onRetry={() => void day.refetch()} />
@@ -399,7 +404,7 @@ export default function RecordDetailScreen() {
           </>
         ) : null}
         {(recordType === "appointment" || recordType === "incident") && canMutate ? <TextCorrection key={bundle.data.recordVersion} bundle={bundle.data} recordType={recordType} /> : null}
-        <RevisionHistory revisions={bundle.data.revisions} />
+        <RevisionHistory revisions={bundle.data.revisions} timeZone={timeZone} />
         <Attachments attachments={bundle.data.attachments} recordType={recordType} recordId={id} canUpload={canMutate} />
         {session.data?.capabilities.hardPurge ? <PurgeRecord recordType={recordType} recordId={id} /> : null}
       </> : null}

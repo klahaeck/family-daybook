@@ -4,11 +4,12 @@ import { useRef, useState } from "react";
 import { Text } from "react-native";
 
 import { ActionButton, Body, Card, ChoiceRow, Field, Heading, Screen, ScreenState } from "@/components/ui";
+import { useAppTheme } from "@/mobile-theme";
 import { useApi, useDaybookSession } from "@/providers";
-import { colors } from "@/theme";
-import { friendlyError } from "@/utils";
+import { formatDateTime, friendlyError, invalidateRecordQueries } from "@/utils";
 
 export default function IncidentsScreen() {
+  const { colors } = useAppTheme();
   const api = useApi();
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -25,7 +26,11 @@ export default function IncidentsScreen() {
     const stableOccurredAt = occurredAt.current ?? new Date().toISOString();
     occurredAt.current = stableOccurredAt;
     return api.createIncident({ category, occurredAt: stableOccurredAt, location: location || undefined, childIds, peoplePresent: [], witnesses: [], observations });
-  }, onSuccess: async () => { occurredAt.current = undefined; setObservations(""); await queryClient.invalidateQueries({ queryKey: ["incidents"] }); } });
+  }, onSuccess: async () => {
+    occurredAt.current = undefined;
+    setObservations("");
+    await invalidateRecordQueries(queryClient, ["incidents"]);
+  } });
   return (
     <Screen title="Incidents" subtitle="Record objective observations and immediate actions.">
       {session.data?.capabilities.mutateRecords ? <Card>
@@ -40,7 +45,7 @@ export default function IncidentsScreen() {
         <ActionButton label={create.isPending ? "Saving…" : "Record incident"} disabled={create.isPending || observations.trim().length < 10 || childIds.length === 0} onPress={() => create.mutate()} />
       </Card> : null}
       <ScreenState loading={incidents.isPending} error={incidents.error} onRetry={() => void incidents.refetch()} empty={incidents.data?.incidents.length === 0 ? "No incidents recorded." : undefined} />
-      {incidents.data?.incidents.map((item) => <Card key={item.id}><Heading>{item.category.replace("_", " ")}</Heading><Body>{new Date(item.occurredAt).toLocaleString()}</Body><Body>{item.observations}</Body>{item.location ? <Body muted>{item.location}</Body> : null}<ActionButton label="View details" secondary onPress={() => router.push({ pathname: "/records/[recordType]/[id]", params: { recordType: "incident", id: item.id } })} /></Card>)}
+      {incidents.data?.incidents.map((item) => <Card key={item.id}><Heading>{item.category.replace("_", " ")}</Heading><Body>{formatDateTime(item.occurredAt, session.data?.workspace.timezone ?? "UTC")}</Body><Body>{item.observations}</Body>{item.location ? <Body muted>{item.location}</Body> : null}<ActionButton label="View details" secondary onPress={() => router.push({ pathname: "/records/[recordType]/[id]", params: { recordType: "incident", id: item.id } })} /></Card>)}
     </Screen>
   );
 }
