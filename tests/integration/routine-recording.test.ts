@@ -62,6 +62,23 @@ describe("routine recording workflow", () => {
       "status",
     ]);
     expect(globalThis.__parentingLogState!.dailyLogs).toHaveLength(logCount);
+
+    const unopenedDate = shiftLocalDate(
+      localDateInTimezone(new Date(), context.workspace.timezone),
+      -2,
+    );
+    const unopened = await planRoutineRecording(repository, context, {
+      operationId: "a3bdf05e-a2f6-4fa2-9f8b-42e8f30ea1de",
+      localDate: unopenedDate,
+      routineName: "Bedtime story",
+      status: "completed",
+    });
+    expect(unopened.result).toBe("needs_input");
+    expect(
+      globalThis.__parentingLogState!.dailyLogs.some(
+        (log) => log.localDate === unopenedDate,
+      ),
+    ).toBe(false);
   });
 
   it("shares dependent questions, creates once, and returns the existing routine slot", async () => {
@@ -138,6 +155,18 @@ describe("routine recording workflow", () => {
         (entry) => entry.templateItemId === ready.snapshot.routineId,
       ),
     ).toHaveLength(1);
+
+    await repository.finalizeDailyLog(context, localDate);
+    const finalizedReplay = await planRoutineRecording(repository, context, {
+      operationId: "1009d930-620c-4f67-91da-38d5b2226e63",
+      localDate,
+      routineName: "Bedtime story",
+    });
+    expect(finalizedReplay).toMatchObject({
+      result: "already_recorded",
+      record: { id: created.id },
+      recordVersion: created.recordVersion,
+    });
   });
 
   it.each(["missed", "not_applicable"] as const)(

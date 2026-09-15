@@ -380,6 +380,10 @@ describe("Daybook MCP contract", () => {
     expect(
       first.result.inputRequests.routineDetails.params.requestedSchema.required,
     ).toEqual(["localDate", "status"]);
+    expect(
+      first.result.inputRequests.routineDetails.params.requestedSchema.properties
+        .status.oneOf[0],
+    ).toEqual({ const: "completed", title: "Completed" });
     expect(globalThis.__parentingLogState!.careEntries).toHaveLength(
       initialEntryCount,
     );
@@ -407,6 +411,10 @@ describe("Daybook MCP contract", () => {
     expect(
       second.result.inputRequests.routineDetails.params.requestedSchema.required,
     ).toEqual(["caregiverIds", "localTime"]);
+    expect(
+      second.result.inputRequests.routineDetails.params.requestedSchema.properties
+        .caregiverIds.items.anyOf[0],
+    ).toMatchObject({ const: expect.any(String), title: expect.any(String) });
     expect(globalThis.__parentingLogState!.careEntries).toHaveLength(
       initialEntryCount,
     );
@@ -497,6 +505,27 @@ describe("Daybook MCP contract", () => {
     );
     expect(accepted.result.structuredContent.data).toMatchObject({
       result: "created",
+      record: { taskKey: "bedtime_story" },
+      recordVersion: expect.any(String),
+    });
+    expect(globalThis.__parentingLogState!.careEntries).toHaveLength(
+      initialEntryCount + 1,
+    );
+
+    const alreadyRecorded = await mcpPayload(
+      await daybookScopeGate(
+        toolRequest({
+          context,
+          arguments: {
+            operationId: "04df1f75-c5f6-4e9f-b0d0-ac8f431c9081",
+            localDate,
+            routineName: "Bedtime story",
+          },
+        }),
+      ),
+    );
+    expect(alreadyRecorded.result.structuredContent.data).toMatchObject({
+      result: "already_recorded",
       record: { taskKey: "bedtime_story" },
       recordVersion: expect.any(String),
     });
