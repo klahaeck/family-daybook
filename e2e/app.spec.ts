@@ -421,6 +421,32 @@ test("primary pages have no serious accessibility violations", async ({ page }) 
   }
 });
 
+test("settings groups family, routine, and access into focused tabs", async ({ page }) => {
+  await page.goto("/app/settings");
+
+  await expect(page.getByRole("tab", { name: "Family" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("heading", { name: "Family workspace" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Weekly routine" })).not.toBeVisible();
+
+  await page.getByRole("tab", { name: "Routine" }).click();
+  await expect(page.getByRole("heading", { name: "Weekly routine" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Week at a glance" })).toBeVisible();
+  await expect(page.getByText(/active items?$/)).toBeVisible();
+
+  await page.getByRole("tab", { name: "Access" }).click();
+  await expect(page.getByRole("heading", { name: "Reviewers" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Security posture" })).toBeVisible();
+
+  const results = await new AxeBuilder({ page })
+    .disableRules(["color-contrast"])
+    .analyze();
+  expect(
+    results.violations.filter(
+      (violation) => violation.impact === "critical" || violation.impact === "serious",
+    ),
+  ).toEqual([]);
+});
+
 test("shows saved routine changes on Today", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "chromium", "Run the stateful settings check once on desktop Chromium.");
   const marker = Date.now().toString();
@@ -433,11 +459,12 @@ test("shows saved routine changes on Today", async ({ page }, testInfo) => {
   await dateInput.fill(previous);
   await expect(page.getByRole("textbox", { name: "Log date", exact: true })).toHaveValue(previous);
   await page.getByRole("link", { name: "Settings" }).click();
+  await page.getByRole("tab", { name: "Routine" }).click();
   const firstRoutine = page.getByLabel("Routine label").first();
   const originalLabel = await firstRoutine.inputValue();
   const updatedLabel = `${originalLabel} ${marker}`;
   await firstRoutine.fill(updatedLabel);
-  await page.getByRole("button", { name: "Save workspace" }).click();
+  await page.getByRole("button", { name: "Save routine" }).click();
   await expect(page.getByText("Settings saved.", { exact: true })).toBeVisible();
 
   await page.getByRole("link", { name: "Today" }).click();
@@ -448,8 +475,9 @@ test("shows saved routine changes on Today", async ({ page }, testInfo) => {
   await expect(page.getByText(originalLabel, { exact: true })).toHaveCount(0);
 
   await page.getByRole("link", { name: "Settings" }).click();
+  await page.getByRole("tab", { name: "Routine" }).click();
   await page.getByLabel("Routine label").first().fill(originalLabel);
-  await page.getByRole("button", { name: "Save workspace" }).click();
+  await page.getByRole("button", { name: "Save routine" }).click();
   await expect(page.getByText("Settings saved.", { exact: true })).toBeVisible();
 });
 
@@ -639,7 +667,9 @@ test("owner can complete the auditable record lifecycle", async ({ page, request
   expect(Array.from((await zipResponse.body()).subarray(0, 2))).toEqual([80, 75]);
 
   await page.goto("/app/settings");
-  await expect(page.getByText("Reviewers", { exact: true })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Family" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("tab", { name: "Routine" })).toHaveAttribute("aria-selected", "false");
+  await expect(page.getByRole("tab", { name: "Access" })).toHaveAttribute("aria-selected", "false");
   await expect(page.getByLabel("Display name")).toHaveCount(1);
   await expect(page.getByLabel("Birthdate")).toHaveCount(1);
   const childName = `Child ${marker}`;
@@ -654,6 +684,12 @@ test("owner can complete the auditable record lifecycle", async ({ page, request
   await page.getByLabel("Name", { exact: true }).last().fill(caregiverName);
   await page.getByRole("combobox", { name: "Relationship" }).last().click();
   await page.getByRole("option", { name: "Grandparent", exact: true }).click();
+  await page.getByRole("switch", { name: "Allow permanent deletion" }).click();
+  await page.getByRole("button", { name: "Save family settings" }).click();
+  await expect(page.getByText("Settings saved.", { exact: true })).toBeVisible();
+
+  await page.getByRole("tab", { name: "Routine" }).click();
+  await expect(page.getByRole("heading", { name: "Week at a glance" })).toBeVisible();
   const removedRoutineLabel = await page.getByLabel("Routine label").first().inputValue();
   await page.getByRole("button", { name: `Remove ${removedRoutineLabel}` }).click();
   await page.getByRole("button", { name: "Add routine item" }).click();
@@ -662,15 +698,16 @@ test("owner can complete the auditable record lifecycle", async ({ page, request
   );
   expect(newRoutineIndex).toBeGreaterThanOrEqual(0);
   await page.getByLabel("Routine label").nth(newRoutineIndex).fill(`Evening walk ${marker}`);
-  await page.getByRole("switch", { name: "Allow permanent deletion" }).click();
-  await page.getByRole("button", { name: "Save workspace" }).click();
+  await page.getByRole("button", { name: "Save routine" }).click();
   await expect(page.getByText("Settings saved.", { exact: true })).toBeVisible();
   await page.reload();
+  await page.getByRole("tab", { name: "Routine" }).click();
   const savedRoutineLabels = await page.getByLabel("Routine label").evaluateAll(
     (inputs) => inputs.map((input) => (input as HTMLInputElement).value),
   );
   expect(savedRoutineLabels).toContain(`Evening walk ${marker}`);
   expect(savedRoutineLabels).not.toContain(removedRoutineLabel);
+  await page.getByRole("tab", { name: "Family" }).click();
   await expect(page.getByLabel("Display name")).toHaveCount(2);
   await expect(page.getByLabel("Display name").last()).toHaveValue(childName);
   await expect(page.getByLabel("Birthdate").last()).toHaveValue("2020-01-15");
@@ -678,6 +715,8 @@ test("owner can complete the auditable record lifecycle", async ({ page, request
   await expect(page.getByLabel("Name", { exact: true }).last()).toHaveValue(caregiverName);
   await expect(page.getByRole("combobox", { name: "Relationship" }).last()).toContainText("Grandparent");
 
+  await page.getByRole("tab", { name: "Access" }).click();
+  await expect(page.getByText("Reviewers", { exact: true })).toBeVisible();
   const reviewerNames = [`Reviewer A ${marker}`, `Reviewer B ${marker}`];
   await expect(page.getByLabel("Reviewer name")).toHaveCount(0);
   await page.getByRole("button", { name: "Add reviewer", exact: true }).click();
@@ -697,6 +736,7 @@ test("owner can complete the auditable record lifecycle", async ({ page, request
   await page.getByRole("button", { name: "Invite reviewer" }).click();
   await expect(page.getByLabel("Reviewer name")).toHaveCount(0);
   await page.reload();
+  await page.getByRole("tab", { name: "Access" }).click();
   await expect(page.getByText(reviewerNames[0], { exact: true })).toBeVisible();
   await expect(page.getByText(reviewerNames[1], { exact: true })).toBeVisible();
   await page.getByRole("button", { name: `Revoke ${reviewerNames[0]}` }).click();

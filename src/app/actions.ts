@@ -32,7 +32,7 @@ import {
   specialArrangementUpdateSchema,
   workspaceSettingsSchema,
 } from "@/lib/domain/schemas";
-import type { ActionResult, Caregiver, Child, RoutineTemplate } from "@/lib/domain/types";
+import type { ActionResult, Caregiver, Child, RoutineTemplate, Workspace } from "@/lib/domain/types";
 import { getRepository, getRequestContext } from "@/lib/repository";
 import { generateEvidencePackage } from "@/lib/reporting/generate-package";
 import { getSiteUrl } from "@/lib/metadata/site-url";
@@ -419,7 +419,7 @@ export async function uploadAttachmentAction(
 
 export async function updateSettingsAction(
   input: unknown,
-): Promise<ActionResult<{ template: RoutineTemplate; children: Child[]; caregivers: Caregiver[] }>> {
+): Promise<ActionResult<{ workspace: Workspace; template: RoutineTemplate; children: Child[]; caregivers: Caregiver[] }>> {
   const parsed = workspaceSettingsSchema.safeParse(input);
   if (!parsed.success) return validationFailure(parsed.error);
   try {
@@ -434,6 +434,7 @@ export async function updateSettingsAction(
     return {
       ok: true,
       data: {
+        workspace: settings.workspace,
         template: settings.template,
         children: settings.children,
         caregivers: settings.caregivers,

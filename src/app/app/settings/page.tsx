@@ -19,7 +19,7 @@ export default async function SettingsPage() {
       <PageHeading
         eyebrow="Owner only"
         title="Workspace settings"
-        description="Configure family labels, reviewer access, timezone, and irreversible deletion policy."
+        description="Manage your family workspace, weekly routine, and reviewer access."
       />
       <SettingsView data={data} timezones={timezones} />
     </AppShell>
