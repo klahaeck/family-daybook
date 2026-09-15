@@ -6,13 +6,14 @@ import { useEffect, useRef } from "react";
 import { Platform, Text } from "react-native";
 
 import { ActionButton, Body, Card, Heading, InlineNotice, Screen, ScreenState } from "@/components/ui";
+import { useAppTheme } from "@/mobile-theme";
 import { useApi, useDaybookSession } from "@/providers";
-import { colors } from "@/theme";
 import { friendlyError } from "@/utils";
 import { getGoogleExternalTransactionToken, launchGoogleExternalLink } from "@/native/external-links";
 import { billingLinkInputForPlatform, isBillingCompletionUrl, launchCheckoutForPlatform } from "@/billing-handoff";
 
 export default function SubscriptionScreen() {
+  const { colors } = useAppTheme();
   const api = useApi();
   const clerk = useClerk();
   const queryClient = useQueryClient();

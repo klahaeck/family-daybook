@@ -5,11 +5,12 @@ import { useState } from "react";
 import { Text, View } from "react-native";
 
 import { ActionButton, Body, Card, ChoiceRow, Field, Heading, Screen, ScreenState } from "@/components/ui";
+import { useAppTheme } from "@/mobile-theme";
 import { useApi, useDaybookSession } from "@/providers";
-import { colors } from "@/theme";
 import { friendlyError, shiftDate, todayLocalDate } from "@/utils";
 
 export default function ReportsScreen() {
+  const { colors } = useAppTheme();
   const api = useApi();
   const queryClient = useQueryClient();
   const session = useDaybookSession();

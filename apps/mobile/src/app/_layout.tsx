@@ -7,8 +7,9 @@ import { Modal, StyleSheet } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { ScreenState } from "@/components/ui";
+import { MobileThemeProvider, useAppTheme, useThemedStyles } from "@/mobile-theme";
 import { AppProviders } from "@/providers";
-import { colors } from "@/theme";
+import type { ThemeColors } from "@/theme";
 
 const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
 if (!publishableKey) throw new Error("Set EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY before starting the mobile app.");
@@ -16,6 +17,8 @@ if (!publishableKey) throw new Error("Set EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY befo
 function RootNavigator() {
   const auth = useAuth({ treatPendingAsSignedOut: false });
   const { isLoaded: isSessionLoaded, session } = useSession();
+  const { resolvedTheme } = useAppTheme();
+  const styles = useThemedStyles(createStyles);
   const isAuthFlowComplete = auth.isLoaded
     && isSessionLoaded
     && auth.isSignedIn
@@ -24,9 +27,9 @@ function RootNavigator() {
 
   return (
     <>
+      <StatusBar style={resolvedTheme === "dark" ? "light" : "dark"} />
       {isAuthFlowComplete ? (
         <AppProviders>
-          <StatusBar style="auto" />
           <Stack screenOptions={{ headerBackTitle: "Back", headerTitle: "Family Daybook" }}>
             <Stack.Screen name="index" options={{ headerShown: false }} />
             <Stack.Screen name="(auth)/sign-in" options={{ headerShown: false }} />
@@ -52,9 +55,11 @@ function RootNavigator() {
 export default function RootLayout() {
   return (
     <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
-      <RootNavigator />
+      <MobileThemeProvider>
+        <RootNavigator />
+      </MobileThemeProvider>
     </ClerkProvider>
   );
 }
 
-const styles = StyleSheet.create({ auth: { flex: 1, backgroundColor: colors.canvas } });
+const createStyles = (colors: ThemeColors) => StyleSheet.create({ auth: { flex: 1, backgroundColor: colors.canvas } });

@@ -1,4 +1,4 @@
-import { DaybookApiClient } from "@family-daybook/api-client";
+import { DaybookApiClient, DaybookApiError } from "@family-daybook/api-client";
 
 function response(status: number, payload: unknown) {
   return new Response(JSON.stringify(payload), {
@@ -139,5 +139,73 @@ describe("DaybookApiClient idempotency", () => {
       "44444444-4444-4444-8444-444444444444",
       "44444444-4444-4444-8444-444444444444",
     ]);
+  });
+});
+
+describe("DaybookApiClient response validation", () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  it("replaces raw schema issues with a user-safe contract error", async () => {
+    jest.spyOn(globalThis, "fetch").mockResolvedValueOnce(response(200, { data: { unexpected: true } }));
+    const client = new DaybookApiClient(
+      "https://example.test",
+      async () => "token",
+      () => "11111111-1111-4111-8111-111111111111",
+    );
+
+    await expect(client.getSession()).rejects.toMatchObject<Partial<DaybookApiError>>({
+      code: "INTERNAL_ERROR",
+      message: "Family Daybook received an unexpected response. Please try again or update the app.",
+      status: 502,
+    });
+  });
+
+  it("reports invalid client input separately from malformed server data", () => {
+    const fetchMock = jest.spyOn(globalThis, "fetch");
+    const client = new DaybookApiClient(
+      "https://example.test",
+      async () => "token",
+      () => "11111111-1111-4111-8111-111111111111",
+    );
+
+    expect(() => client.createAppointment({ title: "" })).toThrow(
+      expect.objectContaining<Partial<DaybookApiError>>({
+        code: "VALIDATION_ERROR",
+        message: "Check the entered information and try again.",
+        status: 400,
+      }),
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("loads legacy incidents with nullable optional details", async () => {
+    jest.spyOn(globalThis, "fetch").mockResolvedValueOnce(response(200, {
+      data: {
+        incidents: [{
+          id: "incident_1",
+          category: "other",
+          occurredAt: "2026-09-15T13:00:00.000Z",
+          discoveredAt: null,
+          location: null,
+          childIds: ["child_1"],
+          witnesses: null,
+          observations: "The child slipped near the kitchen doorway.",
+          exactQuotes: null,
+          immediateActions: null,
+          outcome: null,
+          currentRevisionId: "revision_1",
+        }],
+        attachments: [],
+      },
+    }));
+    const client = new DaybookApiClient(
+      "https://example.test",
+      async () => "token",
+      () => "11111111-1111-4111-8111-111111111111",
+    );
+
+    await expect(client.listIncidents()).resolves.toMatchObject({
+      incidents: [{ peoplePresent: [], witnesses: [], location: undefined }],
+    });
   });
 });

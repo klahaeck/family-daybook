@@ -4,11 +4,12 @@ import { useEffect, useRef, useState } from "react";
 import { Text } from "react-native";
 
 import { ActionButton, Body, Card, Heading, Screen } from "@/components/ui";
+import { useAppTheme } from "@/mobile-theme";
 import { useApi } from "@/providers";
-import { colors } from "@/theme";
 import { friendlyError } from "@/utils";
 
 export function AccountDeletionRecovery({ autoStart = true }: { autoStart?: boolean }) {
+  const { colors } = useAppTheme();
   const api = useApi();
   const clerk = useClerk();
   const { user } = useUser();

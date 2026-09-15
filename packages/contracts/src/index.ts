@@ -110,11 +110,16 @@ export const caregiverSchema = z.object({
   active: z.boolean(),
 });
 
+const optionalRelationshipIdSchema = z
+  .string()
+  .nullish()
+  .transform((value) => value ?? undefined);
+
 export const careEntrySchema = z.object({
   id: z.string(),
   dailyLogId: z.string(),
-  templateItemId: z.string().optional(),
-  arrangementTaskId: z.string().optional(),
+  templateItemId: optionalRelationshipIdSchema,
+  arrangementTaskId: optionalRelationshipIdSchema,
   taskKey: z.string(),
   taskLabel: z.string(),
   childIds: z.array(z.string()),
@@ -317,8 +322,7 @@ export const appointmentInputSchema = appointmentSchema.omit({
   recordVersion: true,
 });
 
-export const incidentSchema = z.object({
-  id: z.string(),
+const incidentInputFieldsSchema = z.object({
   category: z.enum(["safety_hazard", "concerning_interaction", "other"]),
   occurredAt: z.string(),
   discoveredAt: z.string().optional(),
@@ -330,13 +334,29 @@ export const incidentSchema = z.object({
   exactQuotes: z.string().optional(),
   immediateActions: z.string().optional(),
   outcome: z.string().optional(),
+});
+export const incidentInputSchema = incidentInputFieldsSchema;
+
+const optionalLegacyIncidentTextSchema = z
+  .string()
+  .nullish()
+  .transform((value) => value ?? undefined);
+const legacyIncidentPeopleSchema = z
+  .array(z.string())
+  .nullish()
+  .transform((value) => value ?? []);
+
+export const incidentSchema = incidentInputFieldsSchema.extend({
+  id: z.string(),
+  discoveredAt: optionalLegacyIncidentTextSchema,
+  location: optionalLegacyIncidentTextSchema,
+  peoplePresent: legacyIncidentPeopleSchema,
+  witnesses: legacyIncidentPeopleSchema,
+  exactQuotes: optionalLegacyIncidentTextSchema,
+  immediateActions: optionalLegacyIncidentTextSchema,
+  outcome: optionalLegacyIncidentTextSchema,
   currentRevisionId: z.string(),
   recordVersion: z.string().optional(),
-});
-export const incidentInputSchema = incidentSchema.omit({
-  id: true,
-  currentRevisionId: true,
-  recordVersion: true,
 });
 
 export const timelineItemSchema = z.object({
@@ -419,6 +439,7 @@ export const reviewerSchema = z.object({
 });
 export const routineTemplateItemSchema = z.object({
   id: z.string(),
+  taskKey: specialDayTaskKeySchema,
   label: z.string(),
   suggestedTime: localTimeSchema,
   childIds: z.array(z.string()),

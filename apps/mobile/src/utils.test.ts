@@ -1,12 +1,60 @@
 import { DaybookApiError } from "@family-daybook/api-client";
+import { QueryClient } from "@tanstack/react-query";
 
 import {
+  formatDateTime,
+  formatLocalDate,
   friendlyError,
+  invalidateRecordQueries,
+  localDateTimeIso,
   mobileMaintenanceMessage,
   mobileUpdateRequiredMessage,
   isAccountDeletionInProgress,
   versionAtLeast,
 } from "./utils";
+
+describe("formatDateTime", () => {
+  it("uses the workspace timezone instead of the device timezone", () => {
+    const value = "2026-01-15T12:30:00.000Z";
+
+    expect(formatDateTime(value, "America/Chicago", "en-US")).toBe("Jan 15, 2026, 6:30 AM");
+    expect(formatDateTime(value, "Europe/London", "en-US")).toBe("Jan 15, 2026, 12:30 PM");
+  });
+
+  it("does not crash a screen when a legacy timestamp is malformed", () => {
+    expect(formatDateTime("not-a-timestamp", "America/Chicago", "en-US")).toBe("Date unavailable");
+  });
+
+  it("falls back to UTC when a legacy workspace timezone is invalid", () => {
+    expect(formatDateTime("2026-01-15T12:30:00.000Z", "Invalid/Timezone", "en-US")).toBe("Jan 15, 2026, 12:30 PM");
+  });
+});
+
+describe("workspace-local dates", () => {
+  it("formats a local date without shifting it through the device timezone", () => {
+    expect(formatLocalDate("2026-09-15", "en-US")).toBe("Tuesday, September 15, 2026");
+  });
+
+  it("converts local care time in the workspace timezone", () => {
+    expect(localDateTimeIso("2026-01-15", "06:30", "America/Chicago")).toBe("2026-01-15T12:30:00.000Z");
+    expect(localDateTimeIso("2026-07-15", "06:30", "America/Chicago")).toBe("2026-07-15T11:30:00.000Z");
+  });
+});
+
+describe("invalidateRecordQueries", () => {
+  it("invalidates the changed collections and timeline without touching unrelated data", async () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { gcTime: Infinity } } });
+    queryClient.setQueryData(["appointments"], []);
+    queryClient.setQueryData(["timeline"], { items: [] });
+    queryClient.setQueryData(["session"], { id: "session_1" });
+
+    await invalidateRecordQueries(queryClient, ["appointments"]);
+
+    expect(queryClient.getQueryState(["appointments"])?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryState(["timeline"])?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryState(["session"])?.isInvalidated).toBe(false);
+  });
+});
 
 describe("versionAtLeast", () => {
   it.each([
