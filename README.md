@@ -22,6 +22,7 @@ It is a recordkeeping tool, not legal advice, an emergency service, or a guarant
 - Configurable owner-only hard purge with typed confirmation and content-free tombstones
 - MongoDB Atlas persistence plus a clearly marked in-memory local demo mode
 - OAuth-protected, stateless Streamable HTTP MCP tools for authorized daily care records at `/mcp`
+- A shared Expo iOS/Android client using Clerk Native authentication and the versioned `/api/v1` API
 - Public agent documentation, structured capability metadata, and feature evidence pages
 - Private support delivery through a Turnstile-protected web form and Resend
 
@@ -44,6 +45,8 @@ npm run typecheck
 npm test
 npm run build
 npm run test:e2e
+npm run mobile:doctor
+npm run mobile:test
 ```
 
 MongoDB integration tests run when `TEST_MONGODB_URI` is present. Browser tests require Playwright’s Chromium browser (`npx playwright install chromium`).
@@ -84,6 +87,12 @@ Hard purge is disabled by default. When enabled, it removes active record conten
 - React PDF, JSZip, and Vercel Workflow SDK for evidence packages
 
 The repository adapter uses MongoDB when `MONGODB_URI` is configured. The development-only memory adapter is available only when Clerk is not configured, preventing authenticated users from ever sharing demo state.
+
+## Native mobile application
+
+The Expo SDK 57 app lives in `apps/mobile`, with transport contracts and its authenticated API client in `packages/contracts` and `packages/api-client`. See `apps/mobile/README.md` for development-build setup and `docs/mobile-architecture.md` for the API, billing, app-link, and rollout contract.
+
+Native signup and account management use Clerk's iOS/Android components. Clerk Billing data is read natively, but checkout remains on the authenticated Family Daybook website because Clerk does not provide native mobile checkout. Android checkout is disabled until the app is enrolled in Google's applicable US external-link program and the native Play Billing adapter is implemented; JavaScript never substitutes a generic browser for that required flow.
 
 ## Billing access
 

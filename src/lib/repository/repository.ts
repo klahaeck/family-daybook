@@ -11,6 +11,7 @@ import type {
   PurgeTombstone,
   RecordRevision,
   RecordType,
+  ReportEvidenceSnapshot,
   ReportSnapshot,
   SpecialArrangementDay,
   SpecialArrangementsData,
@@ -36,6 +37,7 @@ import type { Identity } from "@/lib/auth/identity";
 import type {
   AgentConfirmation,
   AgentRequestAttribution,
+  OperationRequestAttribution,
 } from "@/lib/agents/types";
 
 export interface RequestContext {
@@ -44,6 +46,7 @@ export interface RequestContext {
   member: Member;
   billingOwnerAuthUserId: string;
   agent?: AgentRequestAttribution;
+  operation?: OperationRequestAttribution;
 }
 
 export interface RecordBundle {
@@ -57,25 +60,23 @@ export type CareEntryWriteResult = VersionedCareEntry & {
   writeDisposition: "created" | "existing";
 };
 export type VersionedDailyLog = DailyLog & { dayVersion: string };
+export type VersionedSpecialArrangement = SpecialArrangementDay & {
+  recordVersion: string;
+};
 
-export interface ReportSource {
+export interface ReportSource extends Omit<ReportEvidenceSnapshot, "reportId" | "workspaceId" | "capturedAt"> {
   snapshot: ReportSnapshot;
-  workspace: Workspace;
-  children: SettingsData["children"];
-  caregivers: SettingsData["caregivers"];
-  entries: CareEntry[];
-  appointments: Appointment[];
-  incidents: Incident[];
-  arrangements: SpecialArrangementDay[];
-  revisions: RecordRevision[];
-  attachments: Attachment[];
 }
 
 export interface ParentingRepository {
-  resolveContext(identity: Identity): Promise<RequestContext>;
-  getAgentOperationResult<T>(
+  resolveContext(
+    identity: Identity,
+    options?: { allowAccountDeletion?: boolean },
+  ): Promise<RequestContext>;
+  getOperationResult<T>(
     context: RequestContext,
   ): Promise<{ found: true; result: T } | { found: false }>;
+  recordOperationResult<T>(context: RequestContext, result: T): Promise<T>;
   getDashboard(
     context: RequestContext,
     date: string,
@@ -90,6 +91,10 @@ export interface ParentingRepository {
   getSpecialArrangements(
     context: RequestContext,
   ): Promise<SpecialArrangementsData>;
+  getSpecialArrangement(
+    context: RequestContext,
+    recordId: string,
+  ): Promise<VersionedSpecialArrangement | null>;
   getRecordBundle(
     context: RequestContext,
     recordType: RecordType,
@@ -148,7 +153,7 @@ export interface ParentingRepository {
   updateSpecialArrangement(
     context: RequestContext,
     input: SpecialArrangementUpdateInput,
-  ): Promise<SpecialArrangementDay>;
+  ): Promise<VersionedSpecialArrangement>;
   correctSpecialArrangement(
     context: RequestContext,
     input: SpecialArrangementCorrectionInput,
@@ -156,6 +161,15 @@ export interface ParentingRepository {
   createReport(
     context: RequestContext,
     input: ReportInput,
+  ): Promise<ReportSnapshot>;
+  retryReportGeneration(
+    context: RequestContext,
+    reportId: string,
+  ): Promise<ReportSnapshot>;
+  markReportScheduled(
+    context: RequestContext,
+    reportId: string,
+    workflowRunId: string,
   ): Promise<ReportSnapshot>;
   markReportReady(
     context: RequestContext,
@@ -185,6 +199,11 @@ export interface ParentingRepository {
     context: RequestContext,
     input: { recordType: RecordType; recordId: string; reason: string },
   ): Promise<PurgeTombstone>;
+  beginAccountDeletion(context: RequestContext): Promise<void>;
+  getAccountDeletionPaths(context: RequestContext): Promise<string[]>;
+  deleteAccountData(
+    context: RequestContext,
+  ): Promise<{ deletedWorkspace: boolean }>;
   addAttachment(context: RequestContext, attachment: Attachment): Promise<void>;
   getAttachment(
     context: RequestContext,

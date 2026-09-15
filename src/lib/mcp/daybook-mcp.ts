@@ -29,6 +29,7 @@ import {
 } from "@/lib/application/daybook-service";
 import {
   createdRoutineResult,
+  existingRoutineResult,
   planRoutineRecording,
   recordRoutineItemInputSchema,
   routineQuestionJsonSchema,
@@ -230,6 +231,7 @@ async function contextFor(
   ctx: ToolContext,
   toolName: DaybookToolName,
   input: Record<string, unknown>,
+  hashInput: Record<string, unknown> = input,
 ) {
   const authInfo = ctx.http?.authInfo;
   const userId = (authInfo?.extra as { userId?: unknown } | undefined)?.userId;
@@ -251,18 +253,23 @@ async function contextFor(
   const context: RequestContext = {
     ...baseContext,
     agent: {
-      source: "mcp",
       oauthClientId: authInfo.clientId,
-      toolName,
-      operationId,
-      inputHash: operationId ? sha256(canonicalJson(input)) : undefined,
-      expectedRecordVersion:
-        typeof input.recordVersion === "string"
-          ? input.recordVersion
-          : undefined,
-      expectedDayVersion:
-        typeof input.dayVersion === "string" ? input.dayVersion : undefined,
     },
+    operation: operationId
+      ? {
+          source: "mcp",
+          clientKey: authInfo.clientId,
+          operationName: toolName,
+          operationId: mutationId.parse(operationId),
+          inputHash: sha256(canonicalJson(hashInput)),
+          expectedRecordVersion:
+            typeof input.recordVersion === "string"
+              ? input.recordVersion
+              : undefined,
+          expectedDayVersion:
+            typeof input.dayVersion === "string" ? input.dayVersion : undefined,
+        }
+      : undefined,
   };
   return context;
 }
@@ -334,13 +341,19 @@ async function runRoutineTool(input: RecordRoutineItemInput, ctx: ToolContext) {
       prior,
     );
     if (plan.result === "already_recorded") {
+      const existingContext = await contextFor(
+        ctx,
+        "record_routine_item",
+        plan.effectiveInput,
+      );
+      const written = await repository.recordOperationResult(
+        existingContext,
+        existingRoutineResult(plan),
+      );
+      const result = createdRoutineResult(written);
       return success(
-        {
-          result: plan.result,
-          record: plan.record,
-          recordVersion: plan.recordVersion,
-        },
-        `Routine item was already recorded as ${plan.record.id}; no record was created.`,
+        result,
+        `Routine item was already recorded as ${result.record.id}; no record was created.`,
       );
     }
     if (plan.result === "needs_input") {
@@ -377,6 +390,10 @@ async function runRoutineTool(input: RecordRoutineItemInput, ctx: ToolContext) {
     const writeContext = await contextFor(
       ctx,
       "record_routine_item",
+      {
+        ...plan.effectiveInput,
+        dayVersion: plan.snapshot.dayVersion,
+      },
       plan.effectiveInput,
     );
     if (

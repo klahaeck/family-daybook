@@ -2,7 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import { canonicalJson, createRevisionHash, sha256 } from "@/lib/domain/integrity";
 import { dayVersionFor } from "@/lib/repository/helpers";
-import type { CareEntry, DailyLog, RecordRevision } from "@/lib/domain/types";
+import type {
+  CareEntry,
+  DailyLog,
+  RecordRevision,
+  SpecialArrangementDay,
+} from "@/lib/domain/types";
 
 describe("record integrity", () => {
   it("canonicalizes object keys recursively", () => {
@@ -77,5 +82,52 @@ describe("record integrity", () => {
         { ...revision, hash: sha256("revision-two") },
       ]),
     ).not.toBe(initial);
+
+    const arrangement = {
+      id: "arrangement_1",
+      workspaceId: log.workspaceId,
+      seriesId: "arrangement_series_1",
+      dailyLogId: log.id,
+      localDate: log.localDate,
+      title: "School holiday",
+      status: "active",
+      assignments: [],
+      tasks: [],
+      currentRevisionId: "arrangement_revision_1",
+      createdAt: "2026-09-14T16:00:00.000Z",
+      updatedAt: "2026-09-14T16:00:00.000Z",
+      createdBy: "member_1",
+    } satisfies SpecialArrangementDay;
+    const arrangementRevision = {
+      ...revision,
+      id: arrangement.currentRevisionId,
+      recordType: "special_arrangement" as const,
+      recordId: arrangement.id,
+      hash: sha256("arrangement-revision-one"),
+    } satisfies RecordRevision;
+    const withArrangement = dayVersionFor(
+      log,
+      [entry],
+      [revision, arrangementRevision],
+      arrangement,
+    );
+    expect(withArrangement).not.toBe(initial);
+    expect(
+      dayVersionFor(
+        log,
+        [entry],
+        [
+          revision,
+          { ...arrangementRevision, hash: sha256("arrangement-revision-two") },
+        ],
+        arrangement,
+      ),
+    ).not.toBe(withArrangement);
+    expect(
+      dayVersionFor(log, [entry], [revision, arrangementRevision], {
+        ...arrangement,
+        status: "cancelled",
+      }),
+    ).toBe(initial);
   });
 });

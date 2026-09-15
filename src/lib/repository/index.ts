@@ -8,7 +8,10 @@ import { clerkConfigured, getIdentity } from "@/lib/auth/identity";
 import { mongoConfigured } from "@/lib/db/mongodb";
 import type { ParentingRepository, RequestContext } from "./repository";
 import type { Identity } from "@/lib/auth/identity";
-import type { AgentRequestAttribution } from "@/lib/agents/types";
+import type {
+  AgentRequestAttribution,
+  OperationRequestAttribution,
+} from "@/lib/agents/types";
 import { MemoryParentingRepository } from "./memory-repository";
 
 let repository: ParentingRepository | undefined;
@@ -33,9 +36,10 @@ export async function getRequestContext(): Promise<RequestContext> {
 export async function getRequestContextForIdentity(
   identity: Identity,
   agent?: AgentRequestAttribution,
+  operation?: OperationRequestAttribution,
 ): Promise<RequestContext> {
   const repo = await getRepository();
-  const context = { ...(await repo.resolveContext(identity)), agent };
+  const context = { ...(await repo.resolveContext(identity)), agent, operation };
   await assertWorkspaceBillingAccess(context);
   return context;
 }

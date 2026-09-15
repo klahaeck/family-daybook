@@ -6,6 +6,7 @@ import { DaybookServiceError } from "@/lib/application/daybook-service";
 import {
   localDateInTimezone,
   localDateTimeToUtc,
+  toDateTimeLocalInTimezone,
   weekdayForLocalDate,
 } from "@/lib/domain/dates";
 import { canonicalJson, sha256 } from "@/lib/domain/integrity";
@@ -112,6 +113,7 @@ export type RoutineRecordingPlan =
       result: "already_recorded";
       record: CareEntry;
       recordVersion: string;
+      effectiveInput: Record<string, unknown>;
       values: WorkflowValues;
       snapshot: RoutineSnapshot;
     }
@@ -388,10 +390,29 @@ export async function planRoutineRecording(
   };
   const existing = await existingResult(repository, context, task);
   if (existing) {
+    const localTime =
+      values.localTime ??
+      toDateTimeLocalInTimezone(
+        new Date(existing.occurredAt),
+        context.workspace.timezone,
+      ).slice(11, 16);
     return {
       result: "already_recorded",
       record: withoutDisposition(existing),
       recordVersion: existing.recordVersion,
+      effectiveInput: {
+        operationId: values.operationId,
+        localDate: values.localDate,
+        routineId: snapshot.routineId,
+        routineFingerprint: snapshot.fingerprint,
+        childIds: values.childIds ?? existing.childIds,
+        caregiverIds: values.caregiverIds ?? existing.caregiverIds,
+        status: values.status,
+        localTime,
+        durationMinutes: values.durationMinutes,
+        activityType: values.activityType,
+        notes: values.notes,
+      },
       values: { ...values, routineId: snapshot.routineId },
       snapshot,
     };
@@ -560,7 +581,6 @@ export async function planRoutineRecording(
       durationMinutes: values.durationMinutes,
       activityType: values.activityType,
       notes: values.notes,
-      dayVersion: snapshot.dayVersion,
     },
     values: normalizedValues,
     snapshot,
@@ -651,5 +671,15 @@ export function createdRoutineResult(entry: CareEntryWriteResult) {
     result: entry.writeDisposition === "created" ? ("created" as const) : ("already_recorded" as const),
     record,
     recordVersion: entry.recordVersion,
+  };
+}
+
+export function existingRoutineResult(
+  plan: Extract<RoutineRecordingPlan, { result: "already_recorded" }>,
+): CareEntryWriteResult {
+  return {
+    ...plan.record,
+    recordVersion: plan.recordVersion,
+    writeDisposition: "existing",
   };
 }

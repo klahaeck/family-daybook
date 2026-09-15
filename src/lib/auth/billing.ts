@@ -93,6 +93,48 @@ export function privateMetadataGrantsComplimentaryAccess(
   return privateMetadata?.complimentaryAccess === true;
 }
 
+export type WorkspaceBillingState =
+  | { status: "active"; source: "subscription" | "complimentary" | "demo" }
+  | { status: "subscription_required" }
+  | { status: "unavailable" };
+
+export async function getWorkspaceBillingState(
+  context: RequestContext,
+): Promise<WorkspaceBillingState> {
+  if (context.identity.demo || !clerkConfigured()) {
+    return { status: "active", source: "demo" };
+  }
+  if (!context.billingOwnerAuthUserId) return { status: "unavailable" };
+
+  try {
+    const { clerkClient } = await import("@clerk/nextjs/server");
+    const client = await clerkClient();
+    let billingUnavailable = false;
+    try {
+      const subscription = await client.billing.getUserBillingSubscription(
+        context.billingOwnerAuthUserId,
+      );
+      if (hasAllowedBillingPlan(subscription.subscriptionItems)) {
+        return { status: "active", source: "subscription" };
+      }
+    } catch {
+      billingUnavailable = true;
+    }
+    try {
+      const owner = await client.users.getUser(context.billingOwnerAuthUserId);
+      if (privateMetadataGrantsComplimentaryAccess(owner.privateMetadata)) {
+        return { status: "active", source: "complimentary" };
+      }
+    } catch {
+      return { status: "unavailable" };
+    }
+    if (billingUnavailable) return { status: "unavailable" };
+    return { status: "subscription_required" };
+  } catch {
+    return { status: "unavailable" };
+  }
+}
+
 export async function assertWorkspaceBillingAccess(
   context: RequestContext,
 ): Promise<void> {

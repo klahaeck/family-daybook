@@ -61,6 +61,14 @@ export async function ensureMongoIndexes(): Promise<void> {
       { unique: true, name: "workspace_email_unique" },
     ),
     db.collection("members").createIndex({ authUserId: 1 }, { sparse: true }),
+    db.collection("accountSubjectFences").createIndex(
+      { subjectKey: 1 },
+      { unique: true, name: "account_subject_fence_unique" },
+    ),
+    db.collection("workspaceMutationFences").createIndex(
+      { workspaceId: 1 },
+      { unique: true, name: "workspace_mutation_fence_unique" },
+    ),
     db.collection("careEntries").createIndex({ workspaceId: 1, occurredAt: -1 }),
     db.collection("careEntries").createIndex({ workspaceId: 1, dailyLogId: 1 }),
     db.collection("routineRecordSlots").createIndex(
@@ -84,6 +92,10 @@ export async function ensureMongoIndexes(): Promise<void> {
     ),
     db.collection("auditEvents").createIndex({ workspaceId: 1, occurredAt: 1 }),
     db.collection("reportSnapshots").createIndex({ workspaceId: 1, createdAt: -1 }),
+    db.collection("reportEvidenceSnapshots").createIndex(
+      { workspaceId: 1, reportId: 1 },
+      { unique: true, name: "report_evidence_workspace_report_unique" },
+    ),
     db.collection("dailyLogs").createIndex(
       { workspaceId: 1, localDate: 1 },
       { unique: true },
@@ -98,6 +110,10 @@ export async function ensureMongoIndexes(): Promise<void> {
     db.collection("agentOperations").createIndex(
       { workspaceId: 1, memberId: 1, oauthClientId: 1, operationId: 1 },
       { unique: true, name: "agent_operation_unique" },
+    ),
+    db.collection("agentOperations").createIndex(
+      { operationKey: 1 },
+      { unique: true, sparse: true, name: "operation_key_unique" },
     ),
     db.collection("agentOperations").createIndex(
       { expiresAt: 1 },

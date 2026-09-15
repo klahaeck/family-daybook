@@ -5,7 +5,6 @@ import {
   planRoutineRecording,
   workflowStateFor,
 } from "@/lib/application/routine-recording";
-import type { AgentRequestAttribution } from "@/lib/agents/types";
 import type { Identity } from "@/lib/auth/identity";
 import { localDateInTimezone, shiftLocalDate } from "@/lib/domain/dates";
 import { canonicalJson, sha256 } from "@/lib/domain/integrity";
@@ -30,15 +29,19 @@ function agentContext(
   effectiveInput: Record<string, unknown>,
   expectedDayVersion?: string,
 ): RequestContext {
-  const agent: AgentRequestAttribution = {
-    source: "mcp",
-    oauthClientId: "https://approved-client.example/mcp.json",
-    toolName: "record_routine_item",
-    operationId,
-    inputHash: sha256(canonicalJson(effectiveInput)),
-    expectedDayVersion,
+  const clientKey = "https://approved-client.example/mcp.json";
+  return {
+    ...context,
+    agent: { oauthClientId: clientKey },
+    operation: {
+      source: "mcp",
+      clientKey,
+      operationName: "record_routine_item",
+      operationId,
+      inputHash: sha256(canonicalJson(effectiveInput)),
+      expectedDayVersion,
+    },
   };
-  return { ...context, agent };
 }
 
 describe("routine recording workflow", () => {
