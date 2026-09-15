@@ -44,7 +44,7 @@ export const recordRoutineItemInputSchema = z.object({
   durationMinutes: z.number().int().min(1).max(1440).optional(),
   activityType: z.string().trim().max(100).optional(),
   notes: z.string().trim().max(2000).optional(),
-  continuationToken: z.string().min(32).max(4000).optional(),
+  continuationToken: z.string().min(32).optional(),
 });
 
 export type RecordRoutineItemInput = z.infer<
@@ -414,6 +414,9 @@ export async function planRoutineRecording(
       .map((child) => [child.id, child] as const),
   );
   const allowedChildIds = task.childIds.filter((childId) => activeChildren.has(childId));
+  if (allowedChildIds.length === 0) {
+    validationError("childIds", "This routine has no active assigned child.");
+  }
   let childIds = values.childIds;
   if (allowedChildIds.length === 1) {
     childIds = [allowedChildIds[0]];
@@ -445,6 +448,9 @@ export async function planRoutineRecording(
   let localTime = values.localTime;
   const activeCaregivers = settings.caregivers.filter((caregiver) => caregiver.active);
   if (values.status === "completed" || values.status === "partial") {
+    if (activeCaregivers.length === 0) {
+      validationError("caregiverIds", "No active caregiver is available.");
+    }
     if (!caregiverIds?.length) {
       questions.push(
         question(

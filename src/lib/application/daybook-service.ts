@@ -240,7 +240,7 @@ export class DaybookService {
     };
   }
 
-  async createCareEntry(input: unknown) {
+  async createCareEntry(input: unknown): Promise<VersionedCareEntry> {
     requireOwner(this.context);
     const parsed = parseOrThrow(daybookCreateCareEntrySchema, input);
     this.assertPermittedDate(parsed.localDate);

@@ -251,13 +251,15 @@ async function contextFor(
   const context: RequestContext = {
     ...baseContext,
     agent: {
-    source: "mcp",
-    oauthClientId: authInfo.clientId,
-    toolName,
-    operationId,
-    inputHash: operationId ? sha256(canonicalJson(input)) : undefined,
-    expectedRecordVersion:
-      typeof input.recordVersion === "string" ? input.recordVersion : undefined,
+      source: "mcp",
+      oauthClientId: authInfo.clientId,
+      toolName,
+      operationId,
+      inputHash: operationId ? sha256(canonicalJson(input)) : undefined,
+      expectedRecordVersion:
+        typeof input.recordVersion === "string"
+          ? input.recordVersion
+          : undefined,
       expectedDayVersion:
         typeof input.dayVersion === "string" ? input.dayVersion : undefined,
     },
