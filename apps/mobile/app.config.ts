@@ -2,6 +2,7 @@ import type { ExpoConfig } from "expo/config";
 
 const bundleIdentifier = "com.myfamilydaybook.app";
 const webOrigin = process.env.EXPO_PUBLIC_WEB_ORIGIN ?? "https://www.myfamilydaybook.com";
+const appleTeamId = process.env.APPLE_APP_TEAM_ID?.trim() || undefined;
 
 const config: ExpoConfig = {
   name: "Family Daybook",
@@ -15,7 +16,12 @@ const config: ExpoConfig = {
   ios: {
     bundleIdentifier,
     supportsTablet: true,
-    associatedDomains: ["applinks:www.myfamilydaybook.com"],
+    ...(appleTeamId
+      ? {
+          appleTeamId,
+          associatedDomains: ["applinks:www.myfamilydaybook.com"],
+        }
+      : {}),
     config: { usesNonExemptEncryption: false },
   },
   android: {
@@ -30,8 +36,12 @@ const config: ExpoConfig = {
       },
     ],
   },
-  plugins: ["expo-router", "expo-secure-store", "@clerk/expo"],
-  experiments: { typedRoutes: true, reactCompiler: true },
+  plugins: [
+    "expo-router",
+    "expo-secure-store",
+    ["@clerk/expo", { appleSignIn: Boolean(appleTeamId) }],
+  ],
+  experiments: { reactCompiler: true },
   extra: {
     webOrigin,
     eas: { projectId: process.env.EXPO_PUBLIC_EAS_PROJECT_ID },

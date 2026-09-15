@@ -2,7 +2,8 @@ import { useSession } from "@clerk/expo";
 import { AuthView } from "@clerk/expo/native";
 import { useRouter } from "expo-router";
 import { useEffect } from "react";
-import { SafeAreaView, StyleSheet } from "react-native";
+import { StyleSheet } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import { colors } from "@/theme";
 

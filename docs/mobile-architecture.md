@@ -31,7 +31,7 @@ No payment details are collected by the native app and no Apple or Google paymen
 Before a production build:
 
 1. Set all root mobile/billing environment values from `.env.example`, including the verified Vercel Blob callback key/origin for presigned uploads, while leaving Google external links disabled until approval and reporting are operational.
-2. Add the real Apple Team ID and Android release certificate fingerprint. The server then publishes `/.well-known/apple-app-site-association` and `/.well-known/assetlinks.json`; both return 503 while unconfigured.
+2. Add the real Apple Team ID to both the server and the mobile build environment, plus the Android release certificate fingerprint. Without `APPLE_APP_TEAM_ID`, local iOS Simulator builds intentionally omit Apple Sign-In and Associated Domains so they do not require signing. The server publishes `/.well-known/apple-app-site-association` and `/.well-known/assetlinks.json`; both return 503 while unconfigured.
 3. Implement `FamilyDaybookExternalLinks` in the Android native project with Play Billing eligibility, one-use token creation, `launchExternalLink`, and Google external-transaction reporting credentials. The checked-in JavaScript adapter intentionally blocks without it.
 4. Run `npm run lint`, `npm run typecheck`, `npm test`, `npm run mobile:test`, `npm run mobile:doctor`, and native preview builds on physical iOS and Android devices.
 5. Test signup, MFA/session tasks, reviewer read-only access, stale-version recovery, repeated idempotency keys, background/foreground refresh, link expiry, webhook delay, report sharing, attachment access, and two-stage account deletion.

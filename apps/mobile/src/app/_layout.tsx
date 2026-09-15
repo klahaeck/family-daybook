@@ -3,7 +3,8 @@ import { tokenCache } from "@clerk/expo/token-cache";
 import { AuthView } from "@clerk/expo/native";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { Modal, SafeAreaView, StyleSheet } from "react-native";
+import { Modal, StyleSheet } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import { ScreenState } from "@/components/ui";
 import { AppProviders } from "@/providers";
@@ -28,7 +29,7 @@ function RootNavigator() {
           <StatusBar style="auto" />
           <Stack screenOptions={{ headerBackTitle: "Back", headerTitle: "Family Daybook" }}>
             <Stack.Screen name="index" options={{ headerShown: false }} />
-            <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+            <Stack.Screen name="(auth)/sign-in" options={{ headerShown: false }} />
             <Stack.Screen name="(app)" options={{ headerShown: false }} />
             <Stack.Screen name="mobile/complete" options={{ headerShown: false }} />
           </Stack>
