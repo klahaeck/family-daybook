@@ -534,6 +534,85 @@ describe("Daybook MCP contract", () => {
     );
   });
 
+  it("replays an exact routine operation and returns existing finalized slots without writing", async () => {
+    const repository = new MemoryParentingRepository();
+    const context = await repository.resolveContext(identity);
+    const localDate = localDateInTimezone(new Date(), context.workspace.timezone);
+    const caregiverId = (await repository.getSettings(context)).caregivers[0].id;
+    const initialEntryCount = globalThis.__parentingLogState!.careEntries.length;
+    const operationId = "1d2773b0-32a5-4514-994a-a4843b40465d";
+    const arguments_ = {
+      operationId,
+      localDate,
+      routineName: "Bedtime story",
+      status: "completed",
+      caregiverIds: [caregiverId],
+      localTime: "20:20",
+      notes: "Read one chapter.",
+    };
+
+    const first = await mcpPayload(
+      await daybookScopeGate(toolRequest({ context, arguments: arguments_ })),
+    );
+    expect(first.result.structuredContent.data).toMatchObject({
+      result: "created",
+      record: { taskKey: "bedtime_story", notes: "Read one chapter." },
+      recordVersion: expect.any(String),
+    });
+
+    const replay = await mcpPayload(
+      await daybookScopeGate(toolRequest({ context, arguments: arguments_ })),
+    );
+    expect(replay.result.structuredContent.data).toEqual(
+      first.result.structuredContent.data,
+    );
+    expect(
+      globalThis.__parentingLogState!.agentOperations.filter(
+        (operation) => operation.operationId === operationId,
+      ),
+    ).toHaveLength(1);
+    expect(globalThis.__parentingLogState!.careEntries).toHaveLength(
+      initialEntryCount + 1,
+    );
+
+    const conflicting = await mcpPayload(
+      await daybookScopeGate(
+        toolRequest({
+          context,
+          arguments: { ...arguments_, status: "partial" },
+        }),
+      ),
+    );
+    expect(conflicting.result.structuredContent.error.code).toBe(
+      "IDEMPOTENCY_CONFLICT",
+    );
+
+    await repository.finalizeDailyLog(context, localDate);
+    const existing = await mcpPayload(
+      await daybookScopeGate(
+        toolRequest({
+          context,
+          arguments: {
+            operationId: "1a38e5d0-5477-4a1f-bc31-ae94d4181f58",
+            localDate,
+            routineName: "Bedtime story",
+          },
+        }),
+      ),
+    );
+    expect(existing.result.structuredContent.data).toMatchObject({
+      result: "already_recorded",
+      record: {
+        id: first.result.structuredContent.data.record.id,
+        taskKey: "bedtime_story",
+      },
+      recordVersion: first.result.structuredContent.data.recordVersion,
+    });
+    expect(globalThis.__parentingLogState!.careEntries).toHaveLength(
+      initialEntryCount + 1,
+    );
+  });
+
   it("returns a conversational fallback and rejects tampered or cross-client continuations", async () => {
     const repository = new MemoryParentingRepository();
     const context = await repository.resolveContext(identity);
@@ -557,7 +636,7 @@ describe("Daybook MCP contract", () => {
       "status",
     ]);
 
-    const tampered = `${needsInput.continuationToken.slice(0, -1)}x`;
+    const tampered = `${needsInput.continuationToken.startsWith("a") ? "b" : "a"}${needsInput.continuationToken.slice(1)}`;
     const tamperedResult = await mcpPayload(
       await daybookScopeGate(
         toolRequest({

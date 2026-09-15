@@ -2,11 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 
-import { clerkConfigured } from "@/lib/auth/identity";
 import {
   createDaybookService,
   DaybookServiceError,
 } from "@/lib/application/daybook-service";
+import { purgeRecord } from "@/lib/application/purge-service";
+import { createReportPackage } from "@/lib/application/report-service";
+import { inviteWorkspaceReviewer } from "@/lib/application/reviewer-service";
 import { careStatusRecordsProvidedCare } from "@/lib/domain/care-entry-rules";
 import { localDateInTimezone } from "@/lib/domain/dates";
 import type {
@@ -34,18 +36,14 @@ import {
 } from "@/lib/domain/schemas";
 import type { ActionResult, Caregiver, Child, RoutineTemplate, Workspace } from "@/lib/domain/types";
 import { getRepository, getRequestContext } from "@/lib/repository";
-import { generateEvidencePackage } from "@/lib/reporting/generate-package";
-import { getSiteUrl } from "@/lib/metadata/site-url";
 import {
   completeAttachmentUpload,
   prepareAttachmentUpload,
 } from "@/lib/storage/attachment-uploads";
 import {
   blobConfigured,
-  deletePrivateFiles,
   putPrivateFile,
 } from "@/lib/storage/private-files";
-import { generateReportWorkflow } from "@/workflows/generate-report";
 
 function fail(error: unknown): ActionResult<never> {
   if (error instanceof DaybookServiceError) {
@@ -340,22 +338,14 @@ export async function generateReportAction(input: unknown): Promise<ActionResult
   try {
     const repository = await getRepository();
     const context = await getRequestContext();
-    const report = await repository.createReport(context, parsed.data);
-    let workflowRunId: string | undefined;
-
-    if (process.env.VERCEL) {
-      const { start } = await import("workflow/api");
-      const run = await start(generateReportWorkflow, [{ context, reportId: report.id }]);
-      workflowRunId = run.runId;
-    } else {
-      const source = await repository.getReportSource(context, report.id);
-      if (!source) throw new Error("REPORT_NOT_FOUND");
-      const artifacts = await generateEvidencePackage(source);
-      await repository.markReportReady(context, report.id, artifacts);
-    }
+    const { reportId, workflowRunId } = await createReportPackage(
+      repository,
+      context,
+      parsed.data,
+    );
 
     revalidatePath("/app/reports");
-    return { ok: true, data: { reportId: report.id, workflowRunId } };
+    return { ok: true, data: { reportId, workflowRunId } };
   } catch (error) {
     return fail(error);
   }
@@ -451,16 +441,7 @@ export async function inviteReviewerAction(input: unknown): Promise<ActionResult
   try {
     const repository = await getRepository();
     const context = await getRequestContext();
-    const member = await repository.inviteReviewer(context, parsed.data);
-    if (clerkConfigured()) {
-      const { clerkClient } = await import("@clerk/nextjs/server");
-      const client = await clerkClient();
-      await client.invitations.createInvitation({
-        emailAddress: parsed.data.email,
-        redirectUrl: new URL("/app", getSiteUrl()).toString(),
-        publicMetadata: { workspaceId: context.workspace.id, role: "reviewer" },
-      });
-    }
+    const member = await inviteWorkspaceReviewer(repository, context, parsed.data);
     revalidatePath("/app/settings");
     return { ok: true, data: { memberId: member.id } };
   } catch (error) {
@@ -486,17 +467,7 @@ export async function hardPurgeAction(input: unknown): Promise<ActionResult> {
   try {
     const repository = await getRepository();
     const context = await getRequestContext();
-    const bundle = await repository.getRecordBundle(context, parsed.data.recordType, parsed.data.recordId);
-    if (!bundle) throw new Error("NOT_FOUND");
-    const revisionIds = bundle.revisions.map((revision) => revision.id);
-    const reports = (await repository.getReports(context)).filter((report) =>
-      report.recordRevisionIds.some((revisionId) => revisionIds.includes(revisionId)),
-    );
-    await repository.hardPurge(context, parsed.data);
-    await deletePrivateFiles([
-      ...bundle.attachments.map((attachment) => attachment.pathname),
-      ...reports.flatMap((report) => [report.pdfPathname, report.zipPathname].filter(Boolean) as string[]),
-    ]);
+    await purgeRecord(repository, context, parsed.data);
     refreshRecords();
     return { ok: true };
   } catch (error) {

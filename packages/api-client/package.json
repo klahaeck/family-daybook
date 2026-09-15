@@ -1,0 +1,13 @@
+{
+  "name": "@family-daybook/api-client",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@family-daybook/contracts": "0.1.0",
+    "zod": "^4.4.3"
+  }
+}

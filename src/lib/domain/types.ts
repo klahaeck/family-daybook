@@ -293,12 +293,33 @@ export interface ReportSnapshot {
   error?: string;
 }
 
+/**
+ * Immutable inputs captured atomically with a report request. Report workers
+ * read this document instead of querying mutable records from the filters.
+ */
+export interface ReportEvidenceSnapshot {
+  reportId: string;
+  workspaceId: string;
+  capturedAt: string;
+  workspace: Workspace;
+  children: Child[];
+  caregivers: Caregiver[];
+  entries: CareEntry[];
+  appointments: Appointment[];
+  incidents: Incident[];
+  arrangements: SpecialArrangementDay[];
+  revisions: RecordRevision[];
+  attachments: Attachment[];
+}
+
 export interface PurgeTombstone {
   id: string;
   workspaceId: string;
   recordType: RecordType;
   recordId: string;
   priorHashes: string[];
+  /** Persisted for retryable blob cleanup; absent only on legacy tombstones. */
+  cleanupPathnames?: string[];
   reason: string;
   purgedBy: string;
   purgedAt: string;

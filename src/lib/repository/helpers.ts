@@ -17,6 +17,33 @@ export function requireOwner(role: string): void {
   if (role !== "owner") throw new Error("FORBIDDEN");
 }
 
+export function assertActiveReferenceIds(
+  submittedIds: string[],
+  activeIds: ReadonlySet<string>,
+  errorCode: "INVALID_CHILD_REFERENCE" | "INVALID_CAREGIVER_REFERENCE",
+): void {
+  if (
+    new Set(submittedIds).size !== submittedIds.length ||
+    submittedIds.some((submittedId) => !activeIds.has(submittedId))
+  ) {
+    throw new Error(errorCode);
+  }
+}
+
+export function timelineCursorFor(item: Pick<TimelineItem, "occurredAt" | "id">): string {
+  return `${item.occurredAt}\0${item.id}`;
+}
+
+export function compareTimelineItemsDescending(
+  a: Pick<TimelineItem, "occurredAt" | "id">,
+  b: Pick<TimelineItem, "occurredAt" | "id">,
+): number {
+  const aCursor = timelineCursorFor(a);
+  const bCursor = timelineCursorFor(b);
+  if (aCursor === bCursor) return 0;
+  return aCursor > bCursor ? -1 : 1;
+}
+
 export function createNextRoutineItems(
   currentItems: RoutineTemplateItem[],
   inputItems: WorkspaceSettingsInput["routineItems"],
@@ -146,10 +173,7 @@ export function toTimelineItems(input: {
         currentRevisionId: arrangement.currentRevisionId,
       }),
     ),
-  ].sort(
-    (a, b) =>
-      new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime(),
-  );
+  ].sort(compareTimelineItemsDescending);
 }
 
 export function recordPayload(
@@ -158,10 +182,27 @@ export function recordPayload(
   return JSON.parse(JSON.stringify(record)) as Record<string, unknown>;
 }
 
+export function assertReportRevisionCoverage(
+  records: Array<
+    CareEntry | Appointment | Incident | SpecialArrangementDay
+  >,
+  revisions: RecordRevision[],
+): void {
+  const includedRevisionIds = new Set(revisions.map((revision) => revision.id));
+  if (
+    records.some(
+      (record) => !includedRevisionIds.has(record.currentRevisionId),
+    )
+  ) {
+    throw new Error("REVISION_NOT_FOUND");
+  }
+}
+
 export function dayVersionFor(
   log: DailyLog,
   entries: CareEntry[],
   revisions: RecordRevision[],
+  specialArrangement?: SpecialArrangementDay | null,
 ): string {
   const revisionHashes = new Map(
     revisions.map((revision) => [revision.id, revision.hash]),
@@ -184,6 +225,15 @@ export function dayVersionFor(
           revisionHash: revisionHashes.get(entry.currentRevisionId),
         }))
         .sort((a, b) => a.id.localeCompare(b.id)),
+      specialArrangement:
+        specialArrangement?.dailyLogId === log.id &&
+        specialArrangement.status === "active"
+          ? {
+              id: specialArrangement.id,
+              revisionHash:
+                revisionHashes.get(specialArrangement.currentRevisionId) ?? null,
+            }
+          : null,
     }),
   );
 }

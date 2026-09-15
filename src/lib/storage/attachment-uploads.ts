@@ -18,6 +18,7 @@ import {
   attachmentUploadClaimSchema,
   attachmentUploadRequestSchema,
 } from "@/lib/domain/schemas";
+import { accountDeletionStarted } from "@/lib/account/deletion-state";
 import { id } from "@/lib/domain/integrity";
 import type { Attachment } from "@/lib/domain/types";
 import type { Identity } from "@/lib/auth/identity";
@@ -102,16 +103,32 @@ export async function prepareAttachmentUpload(
   const policyError = attachmentError(parsed.declaredContentType, parsed.declaredSize);
   if (policyError) throw new Error(policyError);
 
-  const attachmentId = id("attachment");
-  const claim: AttachmentUploadClaim = {
-    ...parsed,
-    attachmentId,
-    pathname: `attachments/${context.workspace.id}/${parsed.recordId}/${attachmentId}.${attachmentExtension(parsed.declaredContentType)}`,
-  };
+  const repository = await getRepository();
+  const replay = await repository.getOperationResult<AttachmentUploadClaim>(
+    context,
+  );
+  let claim = replay.found
+    ? replay.result
+    : (() => {
+        const attachmentId = id("attachment");
+        return {
+          ...parsed,
+          attachmentId,
+          pathname: `attachments/${context.workspace.id}/${parsed.recordId}/${attachmentId}.${attachmentExtension(parsed.declaredContentType)}`,
+        };
+      })();
   await validateClaim(context, claim);
+  if (!replay.found && context.operation) {
+    claim = await repository.recordOperationResult(context, claim);
+    await validateClaim(context, claim);
+  }
 
   if (!blobConfigured()) return { mode: "local", claim };
 
+  const completionUrl = process.env.BLOB_WEBHOOK_PUBLIC_KEY
+    ? callbackUrl()
+    : undefined;
+  if (!completionUrl) throw new Error("ATTACHMENT_CALLBACK");
   const validUntil = Date.now() + 5 * 60 * 1000;
   const token = await issueSignedToken({
     pathname: claim.pathname,
@@ -120,9 +137,6 @@ export async function prepareAttachmentUpload(
     allowedContentTypes: [claim.declaredContentType],
     maximumSizeInBytes: maxAttachmentBytes(claim.declaredContentType),
   });
-  const completionUrl = process.env.BLOB_WEBHOOK_PUBLIC_KEY
-    ? callbackUrl()
-    : undefined;
   const signedClaim: AttachmentUploadCallbackClaim = {
     ...claim,
     workspaceId: context.workspace.id,
@@ -139,12 +153,10 @@ export async function prepareAttachmentUpload(
     allowOverwrite: false,
     addRandomSuffix: false,
     cacheControlMaxAge: 60,
-    onUploadCompleted: completionUrl
-      ? {
-          callbackUrl: completionUrl,
-          tokenPayload: JSON.stringify(signedClaim),
-        }
-      : undefined,
+    onUploadCompleted: {
+      callbackUrl: completionUrl,
+      tokenPayload: JSON.stringify(signedClaim),
+    },
   });
   return { mode: "presigned", claim, presignedUrl };
 }
@@ -253,18 +265,31 @@ export function parseAttachmentCallbackClaim(value: string | null | undefined) {
 export async function completeAttachmentUploadFromCallback(
   claim: AttachmentUploadCallbackClaim,
   actualPathname: string,
-): Promise<Attachment> {
-  const repository = await getRepository();
+): Promise<Attachment | undefined> {
+  if (actualPathname !== claim.pathname) throw new Error("ATTACHMENT_PATH");
   const identity: Identity = claim.identity;
-  const context = await repository.resolveContext(identity);
-  if (
-    context.workspace.id !== claim.workspaceId ||
-    context.member.id !== claim.uploadedBy ||
-    context.member.role !== "owner"
-  ) {
-    throw new Error("FORBIDDEN");
+  try {
+    const repository = await getRepository();
+    const context = await repository.resolveContext(identity);
+    if (
+      context.workspace.id !== claim.workspaceId ||
+      context.member.id !== claim.uploadedBy ||
+      context.member.role !== "owner"
+    ) {
+      throw new Error("FORBIDDEN");
+    }
+    return completeAttachmentUpload(context, claim, actualPathname);
+  } catch (error) {
+    let deleting = false;
+    try {
+      deleting = await accountDeletionStarted(identity.authUserId);
+    } catch {
+      // Preserve the original failure and let the blob provider retry the callback.
+    }
+    if (!deleting) throw error;
+    await deletePrivateFiles([claim.pathname]);
+    return undefined;
   }
-  return completeAttachmentUpload(context, claim, actualPathname);
 }
 
 export function acceptedAttachmentTypes(): readonly string[] {

@@ -1,0 +1,25 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "types": [
+      "jest",
+      "expo/types"
+    ],
+    "paths": {
+      "@/*": [
+        "./src/*"
+      ],
+      "@family-daybook/contracts": [
+        "../../packages/contracts/src/index.ts"
+      ],
+      "@family-daybook/api-client": [
+        "../../packages/api-client/src/index.ts"
+      ]
+    }
+  },
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx"
+  ]
+}

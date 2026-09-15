@@ -7,9 +7,11 @@ import {
   weekdayForLocalDate,
 } from "@/lib/domain/dates";
 import {
+  canonicalJson,
   createAuditHash,
   createRevisionHash,
   id,
+  sha256,
 } from "@/lib/domain/integrity";
 import type {
   Appointment,
@@ -24,6 +26,7 @@ import type {
   RecordRevision,
   RecordType,
   RevisionRecordType,
+  ReportEvidenceSnapshot,
   ReportSnapshot,
   SpecialArrangementDay,
   SettingsData,
@@ -45,8 +48,9 @@ import type {
 } from "@/lib/domain/schemas";
 import { createSeedState, type ParentingState } from "./seed";
 import {
-  arrangementAtIncludedRevision,
   arrangementForChildren,
+  assertActiveReferenceIds,
+  assertReportRevisionCoverage,
   createNextRoutineItems,
   dayVersionFor,
   recordPayload,
@@ -54,6 +58,7 @@ import {
   toTimelineItems,
   withCurrentLateEntryStatus,
 } from "./helpers";
+import { reportArtifactPathnames } from "@/lib/reporting/artifact-paths";
 import type {
   CareEntryWriteResult,
   ParentingRepository,
@@ -62,6 +67,7 @@ import type {
   RequestContext,
   VersionedCareEntry,
   VersionedDailyLog,
+  VersionedSpecialArrangement,
 } from "./repository";
 import type { Identity } from "@/lib/auth/identity";
 import type {
@@ -101,6 +107,19 @@ function ensureDailyLog(data: ParentingState, date: string): DailyLog {
   };
   data.dailyLogs.push(created);
   return created;
+}
+
+function dayVersionForState(data: ParentingState, log: DailyLog): string {
+  const specialArrangement = data.specialArrangements.find(
+    (arrangement) =>
+      arrangement.dailyLogId === log.id && arrangement.status === "active",
+  );
+  return dayVersionFor(
+    log,
+    data.careEntries,
+    data.revisions,
+    specialArrangement,
+  );
 }
 
 function findRecord(data: ParentingState, type: RecordType, recordId: string) {
@@ -198,7 +217,11 @@ function normalizeArrangementFields(
 }
 
 export class MemoryParentingRepository implements ParentingRepository {
-  async resolveContext(identity: Identity): Promise<RequestContext> {
+  async resolveContext(
+    identity: Identity,
+    _options: { allowAccountDeletion?: boolean } = {},
+  ): Promise<RequestContext> {
+    void _options;
     const data = state();
     const matchingMember = data.members.find(
       (item) =>
@@ -226,8 +249,15 @@ export class MemoryParentingRepository implements ParentingRepository {
     };
   }
 
-  async getAgentOperationResult<T>(context: RequestContext) {
-    return this.agentReplay<T>(context);
+  async getOperationResult<T>(context: RequestContext) {
+    return this.operationReplay<T>(context);
+  }
+
+  async recordOperationResult<T>(context: RequestContext, result: T): Promise<T> {
+    const replay = this.operationReplay<T>(context);
+    if (replay.found) return replay.result;
+    this.recordOperation(context, result);
+    return result;
   }
 
   async getDashboard(
@@ -421,6 +451,24 @@ export class MemoryParentingRepository implements ParentingRepository {
     };
   }
 
+  async getSpecialArrangement(
+    context: RequestContext,
+    recordId: string,
+  ): Promise<VersionedSpecialArrangement | null> {
+    requireOwner(context.member.role);
+    const data = state();
+    const arrangement = data.specialArrangements.find(
+      (item) =>
+        item.id === recordId && item.workspaceId === context.workspace.id,
+    );
+    if (!arrangement) return null;
+    const revision = data.revisions.find(
+      (item) => item.id === arrangement.currentRevisionId,
+    );
+    if (!revision) throw new Error("REVISION_NOT_FOUND");
+    return { ...arrangement, recordVersion: revision.hash };
+  }
+
   async getRecordBundle(
     context: RequestContext,
     recordType: RecordType,
@@ -469,7 +517,7 @@ export class MemoryParentingRepository implements ParentingRepository {
     if (context.member.role === "reviewer" && log.status !== "finalized") {
       throw new Error("NOT_FOUND");
     }
-    return dayVersionFor(log, data.careEntries, data.revisions);
+    return dayVersionForState(data, log);
   }
 
   async createAgentConfirmation<T>(
@@ -485,10 +533,10 @@ export class MemoryParentingRepository implements ParentingRepository {
     ) {
       throw new Error("FORBIDDEN");
     }
-    const replay = this.agentReplay<T>(context);
+    const replay = this.operationReplay<T>(context);
     if (replay.found) return result;
     state().agentConfirmations.push(confirmation);
-    this.recordAgentOperation(context, this.redactConfirmationHandle(result));
+    this.recordOperation(context, this.redactConfirmationHandle(result));
     return result;
   }
 
@@ -505,71 +553,43 @@ export class MemoryParentingRepository implements ParentingRepository {
   }
 
   async getReportSource(
-    _context: RequestContext,
+    context: RequestContext,
     reportId: string,
   ): Promise<ReportSource | null> {
     const data = state();
-    const snapshot = data.reports.find((report) => report.id === reportId);
-    if (!snapshot) return null;
-    const from = new Date(`${snapshot.filters.from}T00:00:00`).getTime();
-    const to = new Date(`${snapshot.filters.to}T23:59:59.999`).getTime();
-    const inRange = (value: string) => {
-      const time = new Date(value).getTime();
-      return time >= from && time <= to;
-    };
-    const includesChildren = (childIds: string[]) =>
-      snapshot.filters.childIds.length === 0 ||
-      childIds.some((childId) => snapshot.filters.childIds.includes(childId));
-    const snapshotRevisions = data.revisions.filter((revision) =>
-      snapshot.recordRevisionIds.includes(revision.id),
+    const snapshot = data.reports.find(
+      (report) =>
+        report.id === reportId && report.workspaceId === context.workspace.id,
     );
+    const evidence = data.reportEvidenceSnapshots.find(
+      (item) =>
+        item.reportId === reportId &&
+        item.workspaceId === context.workspace.id,
+    );
+    if (!snapshot || !evidence) return null;
+    const captured = structuredClone(evidence);
     return {
-      snapshot,
-      workspace: data.workspace,
-      children: data.children,
-      caregivers: data.caregivers,
-      entries: snapshot.filters.includeCare
-        ? data.careEntries.filter(
-            (entry) => inRange(entry.occurredAt) && includesChildren(entry.childIds),
-          ).map((entry) =>
-            withCurrentLateEntryStatus(entry, data.workspace.timezone),
-          )
-        : [],
-      appointments: snapshot.filters.includeAppointments
-        ? data.appointments.filter(
-            (item) => inRange(item.scheduledAt) && includesChildren(item.childIds),
-          )
-        : [],
-      incidents: snapshot.filters.includeIncidents
-        ? data.incidents.filter(
-            (item) => inRange(item.occurredAt) && includesChildren(item.childIds),
-          )
-        : [],
-      arrangements: data.specialArrangements
-        .map((arrangement) =>
-          arrangementAtIncludedRevision(arrangement, snapshotRevisions),
-        )
-        .filter(
-          (arrangement): arrangement is SpecialArrangementDay =>
-            arrangement?.status === "active",
-        )
-        .map((arrangement) =>
-          arrangementForChildren(arrangement, snapshot.filters.childIds),
-        ),
-      revisions: snapshotRevisions,
-      attachments: data.attachments.filter((attachment) =>
-        snapshot.attachmentIds.includes(attachment.id),
-      ),
+      snapshot: structuredClone(snapshot),
+      workspace: captured.workspace,
+      children: captured.children,
+      caregivers: captured.caregivers,
+      entries: captured.entries,
+      appointments: captured.appointments,
+      incidents: captured.incidents,
+      arrangements: captured.arrangements,
+      revisions: captured.revisions,
+      attachments: captured.attachments,
     };
   }
 
   async createCareEntry(context: RequestContext, input: CareEntryInput) {
     requireOwner(context.member.role);
-    const replay = this.agentReplay<CareEntryWriteResult>(context);
+    const replay = this.operationReplay<CareEntryWriteResult>(context);
     if (replay.found) return replay.result;
     const data = state();
     const recordedAt = new Date().toISOString();
     const dailyLog = ensureDailyLog(data, input.localDate);
+    if (dailyLog.status !== "open") throw new Error("DAY_FINALIZED");
     if (input.templateItemId && input.arrangementTaskId) {
       throw new Error("INVALID_CARE_TASK");
     }
@@ -608,7 +628,7 @@ export class MemoryParentingRepository implements ParentingRepository {
           recordVersion: revision.hash,
           writeDisposition: "existing",
         };
-        this.recordAgentOperation(context, result);
+        this.recordOperation(context, result);
         return result;
       }
     }
@@ -659,13 +679,13 @@ export class MemoryParentingRepository implements ParentingRepository {
       recordVersion: revision.hash,
       writeDisposition: "created",
     };
-    this.recordAgentOperation(context, result);
+    this.recordOperation(context, result);
     return result;
   }
 
   async updateCareEntry(context: RequestContext, input: CareEntryUpdateInput) {
     requireOwner(context.member.role);
-    const replay = this.agentReplay<VersionedCareEntry>(context);
+    const replay = this.operationReplay<VersionedCareEntry>(context);
     if (replay.found) return replay.result;
     assertValidCareEntryDetails(input);
     const data = state();
@@ -679,8 +699,8 @@ export class MemoryParentingRepository implements ParentingRepository {
     );
     if (!revision) throw new Error("REVISION_NOT_FOUND");
     if (
-      context.agent?.expectedRecordVersion &&
-      context.agent.expectedRecordVersion !== revision.hash
+      context.operation?.expectedRecordVersion &&
+      context.operation.expectedRecordVersion !== revision.hash
     ) {
       throw new Error("VERSION_CONFLICT");
     }
@@ -729,13 +749,13 @@ export class MemoryParentingRepository implements ParentingRepository {
       revisionNumber: revision.revisionNumber,
     });
     const result = { ...entry, recordVersion: revision.hash };
-    this.recordAgentOperation(context, result);
+    this.recordOperation(context, result);
     return result;
   }
 
   async correctCareEntry(context: RequestContext, input: CareEntryCorrectionInput) {
     requireOwner(context.member.role);
-    const replay = this.agentReplay<RecordRevision>(context);
+    const replay = this.operationReplay<RecordRevision>(context);
     if (replay.found) return replay.result;
     assertValidCareEntryDetails(input);
     const data = state();
@@ -749,8 +769,8 @@ export class MemoryParentingRepository implements ParentingRepository {
     );
     if (!previous) throw new Error("REVISION_NOT_FOUND");
     if (
-      context.agent?.expectedRecordVersion &&
-      context.agent.expectedRecordVersion !== previous.hash
+      context.operation?.expectedRecordVersion &&
+      context.operation.expectedRecordVersion !== previous.hash
     ) {
       throw new Error("CONFIRMATION_STALE");
     }
@@ -808,13 +828,40 @@ export class MemoryParentingRepository implements ParentingRepository {
       { revisionNumber: revision.revisionNumber },
       previous.hash,
     );
-    this.recordAgentOperation(context, revision);
+    this.recordOperation(context, revision);
     return revision;
   }
 
   async createAppointment(context: RequestContext, input: AppointmentInput) {
     requireOwner(context.member.role);
+    const replay = this.operationReplay<Appointment>(context);
+    if (replay.found) return replay.result;
     const data = state();
+    assertActiveReferenceIds(
+      input.childIds,
+      new Set(
+        data.children
+          .filter(
+            (child) =>
+              child.workspaceId === context.workspace.id && child.active,
+          )
+          .map((child) => child.id),
+      ),
+      "INVALID_CHILD_REFERENCE",
+    );
+    assertActiveReferenceIds(
+      input.responsibleCaregiverIds,
+      new Set(
+        data.caregivers
+          .filter(
+            (caregiver) =>
+              caregiver.workspaceId === context.workspace.id &&
+              caregiver.active,
+          )
+          .map((caregiver) => caregiver.id),
+      ),
+      "INVALID_CAREGIVER_REFERENCE",
+    );
     const recordedAt = new Date().toISOString();
     const recordId = id("appointment");
     const payload: Record<string, unknown> = { ...input };
@@ -838,12 +885,27 @@ export class MemoryParentingRepository implements ParentingRepository {
     };
     data.appointments.push(appointment);
     await this.audit(context, "created", "appointment", appointment.id);
+    this.recordOperation(context, appointment);
     return appointment;
   }
 
   async createIncident(context: RequestContext, input: IncidentInput) {
     requireOwner(context.member.role);
+    const replay = this.operationReplay<Incident>(context);
+    if (replay.found) return replay.result;
     const data = state();
+    assertActiveReferenceIds(
+      input.childIds,
+      new Set(
+        data.children
+          .filter(
+            (child) =>
+              child.workspaceId === context.workspace.id && child.active,
+          )
+          .map((child) => child.id),
+      ),
+      "INVALID_CHILD_REFERENCE",
+    );
     const recordedAt = new Date().toISOString();
     const recordId = id("incident");
     const payload: Record<string, unknown> = { ...input };
@@ -869,11 +931,14 @@ export class MemoryParentingRepository implements ParentingRepository {
     };
     data.incidents.push(incident);
     await this.audit(context, "created", "incident", incident.id);
+    this.recordOperation(context, incident);
     return incident;
   }
 
   async correctRecord(context: RequestContext, input: CorrectionInput) {
     requireOwner(context.member.role);
+    const replay = this.operationReplay<RecordRevision>(context);
+    if (replay.found) return replay.result;
     const data = state();
     const record = findRecord(data, input.recordType, input.recordId);
     if (!record) throw new Error("NOT_FOUND");
@@ -888,6 +953,12 @@ export class MemoryParentingRepository implements ParentingRepository {
       (revision) => revision.id === record.currentRevisionId,
     );
     if (!previous) throw new Error("REVISION_NOT_FOUND");
+    if (
+      context.operation?.expectedRecordVersion &&
+      context.operation.expectedRecordVersion !== previous.hash
+    ) {
+      throw new Error("VERSION_CONFLICT");
+    }
     const recordedAt = new Date().toISOString();
     const payload = {
       ...recordPayload(record),
@@ -922,6 +993,7 @@ export class MemoryParentingRepository implements ParentingRepository {
     await this.audit(context, "corrected", input.recordType, input.recordId, {
       revisionNumber: revision.revisionNumber,
     }, previous.hash);
+    this.recordOperation(context, revision);
     return revision;
   }
 
@@ -930,15 +1002,15 @@ export class MemoryParentingRepository implements ParentingRepository {
     input: DailyLogNotesInput,
   ) {
     requireOwner(context.member.role);
-    const replay = this.agentReplay<VersionedDailyLog>(context);
+    const replay = this.operationReplay<VersionedDailyLog>(context);
     if (replay.found) return replay.result;
     const data = state();
     const log = ensureDailyLog(data, input.localDate);
     if (log.status !== "open") throw new Error("DAY_FINALIZED");
-    const currentVersion = dayVersionFor(log, data.careEntries, data.revisions);
+    const currentVersion = dayVersionForState(data, log);
     if (
-      context.agent?.expectedDayVersion &&
-      context.agent.expectedDayVersion !== currentVersion
+      context.operation?.expectedDayVersion &&
+      context.operation.expectedDayVersion !== currentVersion
     ) {
       throw new Error("VERSION_CONFLICT");
     }
@@ -947,22 +1019,22 @@ export class MemoryParentingRepository implements ParentingRepository {
     await this.audit(context, "updated", "daily_log", log.id);
     const result = {
       ...log,
-      dayVersion: dayVersionFor(log, data.careEntries, data.revisions),
+      dayVersion: dayVersionForState(data, log),
     };
-    this.recordAgentOperation(context, result);
+    this.recordOperation(context, result);
     return result;
   }
 
   async finalizeDailyLog(context: RequestContext, localDate: string) {
     requireOwner(context.member.role);
-    const replay = this.agentReplay<VersionedDailyLog>(context);
+    const replay = this.operationReplay<VersionedDailyLog>(context);
     if (replay.found) return replay.result;
     const data = state();
     const log = ensureDailyLog(data, localDate);
-    const currentVersion = dayVersionFor(log, data.careEntries, data.revisions);
+    const currentVersion = dayVersionForState(data, log);
     if (
-      context.agent?.expectedDayVersion &&
-      context.agent.expectedDayVersion !== currentVersion
+      context.operation?.expectedDayVersion &&
+      context.operation.expectedDayVersion !== currentVersion
     ) {
       throw new Error("CONFIRMATION_STALE");
     }
@@ -976,9 +1048,9 @@ export class MemoryParentingRepository implements ParentingRepository {
     await this.audit(context, "finalized", "daily_log", log.id);
     const result = {
       ...log,
-      dayVersion: dayVersionFor(log, data.careEntries, data.revisions),
+      dayVersion: dayVersionForState(data, log),
     };
-    this.recordAgentOperation(context, result);
+    this.recordOperation(context, result);
     return result;
   }
 
@@ -987,6 +1059,8 @@ export class MemoryParentingRepository implements ParentingRepository {
     input: SpecialArrangementCreateInput,
   ) {
     requireOwner(context.member.role);
+    const replay = this.operationReplay<SpecialArrangementDay[]>(context);
+    if (replay.found) return replay.result;
     const data = state();
     if (
       input.days.some((day) =>
@@ -1055,6 +1129,7 @@ export class MemoryParentingRepository implements ParentingRepository {
         localDate: day.localDate,
       });
     }
+    this.recordOperation(context, created);
     return created;
   }
 
@@ -1063,6 +1138,8 @@ export class MemoryParentingRepository implements ParentingRepository {
     input: SpecialArrangementUpdateInput,
   ) {
     requireOwner(context.member.role);
+    const replay = this.operationReplay<VersionedSpecialArrangement>(context);
+    if (replay.found) return replay.result;
     const data = state();
     const arrangement = data.specialArrangements.find(
       (item) => item.id === input.recordId,
@@ -1075,6 +1152,12 @@ export class MemoryParentingRepository implements ParentingRepository {
       (item) => item.id === arrangement.currentRevisionId,
     );
     if (!revision) throw new Error("REVISION_NOT_FOUND");
+    if (
+      context.operation?.expectedRecordVersion &&
+      context.operation.expectedRecordVersion !== revision.hash
+    ) {
+      throw new Error("VERSION_CONFLICT");
+    }
     const fields = normalizeArrangementFields(data, input, arrangement);
     const updatedAt = new Date().toISOString();
     const payload = arrangementPayload({
@@ -1094,7 +1177,9 @@ export class MemoryParentingRepository implements ParentingRepository {
     await this.audit(context, "updated", "special_arrangement", arrangement.id, {
       revisionNumber: revision.revisionNumber,
     });
-    return arrangement;
+    const result = { ...arrangement, recordVersion: revision.hash };
+    this.recordOperation(context, result);
+    return result;
   }
 
   async correctSpecialArrangement(
@@ -1102,6 +1187,8 @@ export class MemoryParentingRepository implements ParentingRepository {
     input: SpecialArrangementCorrectionInput,
   ) {
     requireOwner(context.member.role);
+    const replay = this.operationReplay<RecordRevision>(context);
+    if (replay.found) return replay.result;
     const data = state();
     const arrangement = data.specialArrangements.find(
       (item) => item.id === input.recordId,
@@ -1114,6 +1201,12 @@ export class MemoryParentingRepository implements ParentingRepository {
       (item) => item.id === arrangement.currentRevisionId,
     );
     if (!previous) throw new Error("REVISION_NOT_FOUND");
+    if (
+      context.operation?.expectedRecordVersion &&
+      context.operation.expectedRecordVersion !== previous.hash
+    ) {
+      throw new Error("VERSION_CONFLICT");
+    }
     const fields = normalizeArrangementFields(data, input, arrangement);
     const recordedAt = new Date().toISOString();
     const payload = arrangementPayload({
@@ -1152,78 +1245,87 @@ export class MemoryParentingRepository implements ParentingRepository {
       { revisionNumber: revision.revisionNumber },
       previous.hash,
     );
+    this.recordOperation(context, revision);
     return revision;
   }
 
   async createReport(context: RequestContext, input: ReportInput) {
     requireOwner(context.member.role);
+    const replay = this.operationReplay<ReportSnapshot>(context);
+    if (replay.found) return replay.result;
     const data = state();
-    const recordRevisionIds = data.revisions
-      .filter((revision) => {
-        if (revision.recordType === "special_arrangement") return false;
-        const record = findRecord(data, revision.recordType, revision.recordId);
-        if (!record) return false;
-        const when =
-          "occurredAt" in record
-            ? record.occurredAt
-            : (record as Appointment).scheduledAt;
-        const date = when.slice(0, 10);
-        const includedType =
-          (revision.recordType === "care_entry" && input.includeCare) ||
-          (revision.recordType === "appointment" && input.includeAppointments) ||
-          (revision.recordType === "incident" && input.includeIncidents);
-        const finalizedCare =
-          revision.recordType !== "care_entry" ||
-          (record &&
-            "dailyLogId" in record &&
-            data.dailyLogs.some(
-              (log) => log.id === record.dailyLogId && log.status === "finalized",
-            ));
-        const childIds = record.childIds;
-        return (
-          includedType &&
-          finalizedCare &&
-          date >= input.from &&
-          date <= input.to &&
-          (input.childIds.length === 0 ||
-            childIds.some((childId) => input.childIds.includes(childId)))
-        );
-      })
-      .map((revision) => revision.id);
-    const includedArrangementIds = new Set(
-      data.specialArrangements
+    const includesChildren = (childIds: string[]) =>
+      input.childIds.length === 0 ||
+      childIds.some((childId) => input.childIds.includes(childId));
+    const inRange = (dateTime: string) => {
+      const localDate = dateTime.slice(0, 10);
+      return localDate >= input.from && localDate <= input.to;
+    };
+    const entries = input.includeCare
+      ? data.careEntries
+          .filter(
+            (entry) =>
+              inRange(entry.occurredAt) &&
+              includesChildren(entry.childIds) &&
+              data.dailyLogs.some(
+                (log) =>
+                  log.id === entry.dailyLogId && log.status === "finalized",
+              ),
+          )
+          .map((entry) =>
+            withCurrentLateEntryStatus(entry, data.workspace.timezone),
+          )
+      : [];
+    const appointments = input.includeAppointments
+      ? data.appointments.filter(
+          (appointment) =>
+            inRange(appointment.scheduledAt) &&
+            includesChildren(appointment.childIds),
+        )
+      : [];
+    const incidents = input.includeIncidents
+      ? data.incidents.filter(
+          (incident) =>
+            inRange(incident.occurredAt) &&
+            includesChildren(incident.childIds),
+        )
+      : [];
+    const arrangements = data.specialArrangements
       .filter((arrangement) => {
         const finalized = data.dailyLogs.some(
           (log) => log.id === arrangement.dailyLogId && log.status === "finalized",
         );
-        const includedChild =
-          input.childIds.length === 0 ||
-          arrangement.assignments.some((assignment) =>
-            input.childIds.includes(assignment.childId),
-          );
         return (
           arrangement.status === "active" &&
           finalized &&
           arrangement.localDate >= input.from &&
           arrangement.localDate <= input.to &&
-          includedChild
+          includesChildren(
+            arrangement.assignments.map((assignment) => assignment.childId),
+          )
         );
       })
-      .map((arrangement) => arrangement.id),
+      .map((arrangement) => arrangementForChildren(arrangement, input.childIds));
+    const recordIds = new Set([
+      ...entries.map((entry) => entry.id),
+      ...appointments.map((appointment) => appointment.id),
+      ...incidents.map((incident) => incident.id),
+      ...arrangements.map((arrangement) => arrangement.id),
+    ]);
+    const revisions = data.revisions.filter((revision) =>
+      recordIds.has(revision.recordId),
     );
-    const arrangementRevisionIds = data.revisions
-      .filter(
-        (revision) =>
-          revision.recordType === "special_arrangement" &&
-          includedArrangementIds.has(revision.recordId),
-      )
-      .map((revision) => revision.id);
-    const revisionIds = [...recordRevisionIds, ...arrangementRevisionIds];
+    assertReportRevisionCoverage(
+      [...entries, ...appointments, ...incidents, ...arrangements],
+      revisions,
+    );
+    const revisionIds = revisions.map((revision) => revision.id);
     const attachments = data.attachments.filter((attachment) =>
       revisionIds.includes(attachment.revisionId),
     );
+    const reportId = id("report");
     const report: ReportSnapshot = {
-      id: id("report"),
+      id: reportId,
       workspaceId: data.workspace.id,
       createdBy: context.member.id,
       createdAt: new Date().toISOString(),
@@ -1231,9 +1333,53 @@ export class MemoryParentingRepository implements ParentingRepository {
       filters: input,
       recordRevisionIds: revisionIds,
       attachmentIds: attachments.map((attachment) => attachment.id),
+      ...reportArtifactPathnames(data.workspace.id, reportId),
     };
+    const evidence: ReportEvidenceSnapshot = structuredClone({
+      reportId,
+      workspaceId: data.workspace.id,
+      capturedAt: report.createdAt,
+      workspace: data.workspace,
+      children: data.children,
+      caregivers: data.caregivers,
+      entries,
+      appointments,
+      incidents,
+      arrangements,
+      revisions,
+      attachments,
+    });
     data.reports.push(report);
+    data.reportEvidenceSnapshots.push(evidence);
+    this.recordOperation(context, report);
     return report;
+  }
+
+  async retryReportGeneration(
+    _context: RequestContext,
+    reportId: string,
+  ): Promise<ReportSnapshot> {
+    const report = state().reports.find((item) => item.id === reportId);
+    if (!report) throw new Error("NOT_FOUND");
+    if (report.status === "failed") {
+      report.status = "pending";
+      delete report.error;
+      delete report.workflowRunId;
+    }
+    return structuredClone(report);
+  }
+
+  async markReportScheduled(
+    _context: RequestContext,
+    reportId: string,
+    workflowRunId: string,
+  ): Promise<ReportSnapshot> {
+    const report = state().reports.find((item) => item.id === reportId);
+    if (!report) throw new Error("NOT_FOUND");
+    if (report.status === "pending" && !report.workflowRunId) {
+      report.workflowRunId = workflowRunId;
+    }
+    return structuredClone(report);
   }
 
   async markReportReady(
@@ -1248,7 +1394,9 @@ export class MemoryParentingRepository implements ParentingRepository {
   ) {
     const report = state().reports.find((item) => item.id === reportId);
     if (!report) throw new Error("NOT_FOUND");
+    if (report.status === "ready") return;
     Object.assign(report, artifacts, { status: "ready" as const });
+    delete report.error;
     await this.audit(context, "report_generated", "report", reportId);
   }
 
@@ -1259,6 +1407,7 @@ export class MemoryParentingRepository implements ParentingRepository {
   ) {
     const report = state().reports.find((item) => item.id === reportId);
     if (!report) throw new Error("NOT_FOUND");
+    if (report.status === "ready") return;
     Object.assign(report, { status: "failed" as const, error });
   }
 
@@ -1267,6 +1416,11 @@ export class MemoryParentingRepository implements ParentingRepository {
     input: WorkspaceSettingsInput,
   ) {
     requireOwner(context.member.role);
+    const replay = this.operationReplay<SettingsData>(context);
+    if (replay.found) {
+      context.workspace = replay.result.workspace;
+      return replay.result;
+    }
     const data = state();
     data.workspace.name = input.name;
     data.workspace.timezone = input.timezone;
@@ -1338,7 +1492,9 @@ export class MemoryParentingRepository implements ParentingRepository {
     }
     await this.audit(context, "settings_changed", "workspace", data.workspace.id);
     context.workspace = data.workspace;
-    return this.getSettings(context);
+    const result = await this.getSettings(context);
+    this.recordOperation(context, result);
+    return result;
   }
 
   async inviteReviewer(
@@ -1346,6 +1502,8 @@ export class MemoryParentingRepository implements ParentingRepository {
     input: { email: string; displayName: string },
   ) {
     requireOwner(context.member.role);
+    const replay = this.operationReplay<Member>(context);
+    if (replay.found) return replay.result;
     const data = state();
     const existing = data.members.find(
       (member) => member.email.toLowerCase() === input.email.toLowerCase(),
@@ -1364,15 +1522,19 @@ export class MemoryParentingRepository implements ParentingRepository {
     member.invitedAt = new Date().toISOString();
     if (!existing) data.members.push(member);
     await this.audit(context, "invited", "member", member.id);
+    this.recordOperation(context, member);
     return member;
   }
 
   async revokeReviewer(context: RequestContext, memberId: string) {
     requireOwner(context.member.role);
+    const replay = this.operationReplay<null>(context);
+    if (replay.found) return;
     const member = state().members.find((item) => item.id === memberId);
     if (!member || member.role !== "reviewer") throw new Error("NOT_FOUND");
     member.status = "revoked";
     await this.audit(context, "revoked", "member", member.id);
+    this.recordOperation(context, null);
   }
 
   async hardPurge(
@@ -1380,13 +1542,30 @@ export class MemoryParentingRepository implements ParentingRepository {
     input: { recordType: RecordType; recordId: string; reason: string },
   ) {
     requireOwner(context.member.role);
+    const replay = this.operationReplay<PurgeTombstone>(context);
+    if (replay.found) return replay.result;
     const data = state();
-    if (!data.workspace.hardDeleteEnabled) throw new Error("HARD_DELETE_DISABLED");
     const bundle = await this.getRecordBundle(context, input.recordType, input.recordId);
-    if (!bundle) throw new Error("NOT_FOUND");
+    if (!bundle) {
+      const priorPurge = data.tombstones.find(
+        (item) =>
+          item.workspaceId === context.workspace.id &&
+          item.recordType === input.recordType &&
+          item.recordId === input.recordId,
+      );
+      if (!priorPurge) throw new Error("NOT_FOUND");
+      this.recordOperation(context, priorPurge);
+      return priorPurge;
+    }
+    if (!data.workspace.hardDeleteEnabled) throw new Error("HARD_DELETE_DISABLED");
     const priorHashes = bundle.revisions.map((revision) => revision.hash);
     const revisionIds = bundle.revisions.map((revision) => revision.id);
     const attachmentIds = bundle.attachments.map((attachment) => attachment.id);
+    const affectedReports = data.reports.filter((report) =>
+      report.recordRevisionIds.some((revisionId) =>
+        revisionIds.includes(revisionId),
+      ),
+    );
     data.careEntries = data.careEntries.filter((item) => item.id !== input.recordId);
     data.appointments = data.appointments.filter((item) => item.id !== input.recordId);
     data.incidents = data.incidents.filter((item) => item.id !== input.recordId);
@@ -1400,12 +1579,24 @@ export class MemoryParentingRepository implements ParentingRepository {
       (report) =>
         !report.recordRevisionIds.some((revisionId) => revisionIds.includes(revisionId)),
     );
+    const affectedReportIds = new Set(affectedReports.map((report) => report.id));
+    data.reportEvidenceSnapshots = data.reportEvidenceSnapshots.filter(
+      (snapshot) => !affectedReportIds.has(snapshot.reportId),
+    );
     const tombstone: PurgeTombstone = {
       id: id("purge"),
       workspaceId: data.workspace.id,
       recordType: input.recordType,
       recordId: input.recordId,
       priorHashes,
+      cleanupPathnames: [
+        ...bundle.attachments.map((attachment) => attachment.pathname),
+        ...affectedReports.flatMap((report) =>
+          [report.pdfPathname, report.zipPathname].filter(
+            (pathname): pathname is string => Boolean(pathname),
+          ),
+        ),
+      ],
       reason: input.reason,
       purgedBy: context.member.id,
       purgedAt: new Date().toISOString(),
@@ -1415,11 +1606,64 @@ export class MemoryParentingRepository implements ParentingRepository {
       revisionCount: revisionIds.length,
       attachmentCount: attachmentIds.length,
     });
+    this.recordOperation(context, tombstone);
     return tombstone;
+  }
+
+  async beginAccountDeletion(context: RequestContext): Promise<void> {
+    void context;
+  }
+
+  async getAccountDeletionPaths(context: RequestContext): Promise<string[]> {
+    if (context.member.role !== "owner") return [];
+    const data = state();
+    return [
+      ...data.attachments.map((attachment) => attachment.pathname),
+      ...data.reports.flatMap((report) =>
+        [report.pdfPathname, report.zipPathname].filter(
+          (pathname): pathname is string => Boolean(pathname),
+        ),
+      ),
+    ];
+  }
+
+  async deleteAccountData(
+    context: RequestContext,
+  ): Promise<{ deletedWorkspace: boolean }> {
+    const data = state();
+    if (context.member.role === "reviewer") {
+      data.members = data.members.filter(
+        (member) =>
+          member.id !== context.member.id ||
+          member.workspaceId !== context.workspace.id,
+      );
+      return { deletedWorkspace: false };
+    }
+
+    data.members = [];
+    data.children = [];
+    data.caregivers = [];
+    data.templates = [];
+    data.dailyLogs = [];
+    data.specialArrangements = [];
+    data.careEntries = [];
+    data.appointments = [];
+    data.incidents = [];
+    data.revisions = [];
+    data.attachments = [];
+    data.auditEvents = [];
+    data.reports = [];
+    data.reportEvidenceSnapshots = [];
+    data.tombstones = [];
+    data.agentOperations = [];
+    data.agentConfirmations = [];
+    return { deletedWorkspace: true };
   }
 
   async addAttachment(context: RequestContext, attachment: Attachment) {
     requireOwner(context.member.role);
+    const replay = this.operationReplay<null>(context);
+    if (replay.found) return;
     if (attachment.workspaceId !== context.workspace.id) throw new Error("FORBIDDEN");
     const existing = state().attachments.find((item) => item.id === attachment.id);
     if (existing) {
@@ -1431,6 +1675,7 @@ export class MemoryParentingRepository implements ParentingRepository {
       ) {
         throw new Error("ATTACHMENT_CONFLICT");
       }
+      this.recordOperation(context, null);
       return;
     }
     if (state().attachments.some((item) => item.pathname === attachment.pathname)) {
@@ -1438,6 +1683,7 @@ export class MemoryParentingRepository implements ParentingRepository {
     }
     state().attachments.push(attachment);
     await this.audit(context, "created", "attachment", attachment.id);
+    this.recordOperation(context, null);
   }
 
   async getAttachment(
@@ -1498,46 +1744,82 @@ export class MemoryParentingRepository implements ParentingRepository {
     return revision;
   }
 
-  private agentReplay<T>(
+  private operationReplay<T>(
     context: RequestContext,
   ): { found: true; result: T } | { found: false } {
-    const agent = context.agent;
-    if (!agent?.operationId) return { found: false };
-    if (!agent.toolName || !agent.inputHash) throw new Error("VALIDATION_ERROR");
-    const existing = state().agentOperations.find(
+    const operation = context.operation;
+    if (!operation) return { found: false };
+    const operationKey = this.operationKey(context);
+    const current = state().agentOperations.find(
       (item) =>
         item.workspaceId === context.workspace.id &&
         item.memberId === context.member.id &&
-        item.oauthClientId === agent.oauthClientId &&
-        item.operationId === agent.operationId,
+        item.operationKey === operationKey,
     );
+    const legacy =
+      operation.source === "mcp"
+        ? state().agentOperations.find(
+            (item) =>
+              !item.operationKey &&
+              item.workspaceId === context.workspace.id &&
+              item.memberId === context.member.id &&
+              item.oauthClientId === operation.clientKey &&
+              item.operationId === operation.operationId,
+          )
+        : undefined;
+    const existing = current ?? legacy;
     if (!existing) return { found: false };
     if (
-      existing.toolName !== agent.toolName ||
-      existing.inputHash !== agent.inputHash
+      (existing.operationName ?? existing.toolName) !==
+        operation.operationName ||
+      existing.inputHash !== operation.inputHash ||
+      (existing.source !== undefined && existing.source !== operation.source) ||
+      (existing.clientKey !== undefined &&
+        existing.clientKey !== operation.clientKey)
     ) {
       throw new Error("IDEMPOTENCY_CONFLICT");
     }
-    return { found: true, result: existing.result as T };
+    return { found: true, result: structuredClone(existing.result) as T };
   }
 
-  private recordAgentOperation<T>(context: RequestContext, result: T): void {
-    const agent = context.agent;
-    if (!agent?.operationId) return;
-    if (!agent.toolName || !agent.inputHash) throw new Error("VALIDATION_ERROR");
+  private recordOperation<T>(context: RequestContext, result: T): void {
+    const operation = context.operation;
+    if (!operation) return;
     const receipt: AgentOperationReceipt = {
       id: id("agent_operation"),
       workspaceId: context.workspace.id,
       memberId: context.member.id,
-      oauthClientId: agent.oauthClientId,
-      operationId: agent.operationId,
-      toolName: agent.toolName,
-      inputHash: agent.inputHash,
-      result,
+      source: operation.source,
+      clientKey: operation.clientKey,
+      operationName: operation.operationName,
+      operationKey: this.operationKey(context),
+      operationId: operation.operationId,
+      inputHash: operation.inputHash,
+      ...(operation.source === "mcp"
+        ? {
+            oauthClientId: operation.clientKey,
+            toolName: operation.operationName,
+          }
+        : {}),
+      result: structuredClone(result),
       createdAt: new Date(),
       expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
     };
     state().agentOperations.push(receipt);
+  }
+
+  private operationKey(context: RequestContext): string {
+    const operation = context.operation;
+    if (!operation) throw new Error("VALIDATION_ERROR");
+    return sha256(
+      canonicalJson({
+        workspaceId: context.workspace.id,
+        memberId: context.member.id,
+        source: operation.source,
+        clientKey: operation.clientKey,
+        operationId: operation.operationId,
+      }),
+    );
   }
 
   private redactConfirmationHandle<T>(result: T): T {
@@ -1553,7 +1835,9 @@ export class MemoryParentingRepository implements ParentingRepository {
     baseVersion: string,
   ): void {
     const agent = context.agent;
+    const operation = context.operation;
     if (!agent?.confirmationTokenHash) return;
+    if (!operation) throw new Error("VALIDATION_ERROR");
     const data = state();
     const index = data.agentConfirmations.findIndex(
       (item) =>
@@ -1574,13 +1858,13 @@ export class MemoryParentingRepository implements ParentingRepository {
       throw new Error("CONFIRMATION_STALE");
     }
     if (confirmation.consumedByOperationId) {
-      if (confirmation.consumedByOperationId !== agent.operationId) {
+      if (confirmation.consumedByOperationId !== operation.operationId) {
         throw new Error("CONFIRMATION_EXPIRED");
       }
       return;
     }
     confirmation.consumedAt = new Date();
-    confirmation.consumedByOperationId = agent.operationId;
+    confirmation.consumedByOperationId = operation.operationId;
   }
 
   private async audit(
@@ -1594,17 +1878,21 @@ export class MemoryParentingRepository implements ParentingRepository {
     const data = state();
     const occurredAt = new Date().toISOString();
     const last = data.auditEvents.at(-1);
-    const agentMetadata = context.agent
+    const operationMetadata = context.operation
       ? {
-          source: context.agent.source,
-          oauthClientId: context.agent.oauthClientId,
-          ...(context.agent.operationId
-            ? { operationId: context.agent.operationId }
+          source: context.operation.source,
+          clientKey: context.operation.clientKey,
+          operationId: context.operation.operationId,
+          operationName: context.operation.operationName,
+          ...(context.operation.source === "mcp"
+            ? {
+                oauthClientId: context.operation.clientKey,
+                toolName: context.operation.operationName,
+              }
             : {}),
-          ...(context.agent.toolName ? { toolName: context.agent.toolName } : {}),
         }
       : {};
-    const combinedMetadata = { ...metadata, ...agentMetadata };
+    const combinedMetadata = { ...metadata, ...operationMetadata };
     const base = {
       actorId: context.member.id,
       action,

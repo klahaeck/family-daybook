@@ -2,14 +2,18 @@ export type AgentConfirmationKind =
   | "care_entry_correction"
   | "day_finalization";
 
-export interface AgentRequestAttribution {
-  source: "mcp";
-  oauthClientId: string;
-  toolName?: string;
-  operationId?: string;
-  inputHash?: string;
+export interface OperationRequestAttribution {
+  source: "mcp" | "mobile_api";
+  clientKey: string;
+  operationName: string;
+  operationId: string;
+  inputHash: string;
   expectedRecordVersion?: string;
   expectedDayVersion?: string;
+}
+
+export interface AgentRequestAttribution {
+  oauthClientId: string;
   confirmationTokenHash?: string;
   confirmationKind?: AgentConfirmationKind;
 }
@@ -18,9 +22,13 @@ export interface AgentOperationReceipt {
   id: string;
   workspaceId: string;
   memberId: string;
-  oauthClientId: string;
+  source?: "mcp" | "mobile_api";
+  clientKey?: string;
+  operationName?: string;
+  operationKey?: string;
   operationId: string;
-  toolName: string;
+  oauthClientId?: string;
+  toolName?: string;
   inputHash: string;
   result: unknown;
   createdAt: Date;

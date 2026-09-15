@@ -18,6 +18,7 @@ import type {
   Member,
   PurgeTombstone,
   RecordRevision,
+  ReportEvidenceSnapshot,
   ReportSnapshot,
   RoutineTemplate,
   SpecialArrangementDay,
@@ -43,6 +44,7 @@ export interface ParentingState {
   attachments: Attachment[];
   auditEvents: AuditEvent[];
   reports: ReportSnapshot[];
+  reportEvidenceSnapshots: ReportEvidenceSnapshot[];
   tombstones: PurgeTombstone[];
   agentOperations: AgentOperationReceipt[];
   agentConfirmations: AgentConfirmation[];
@@ -282,6 +284,7 @@ export function createSeedState(
     attachments: [],
     auditEvents,
     reports: [],
+    reportEvidenceSnapshots: [],
     tombstones: [],
     agentOperations: [],
     agentConfirmations: [],

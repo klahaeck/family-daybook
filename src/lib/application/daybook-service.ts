@@ -242,16 +242,29 @@ export class DaybookService {
 
   async createCareEntry(input: unknown): Promise<VersionedCareEntry> {
     requireOwner(this.context);
+    const replay = await this.repository.getOperationResult<VersionedCareEntry>(
+      this.context,
+    );
+    if (replay.found) {
+      const result = replay.result as VersionedCareEntry & {
+        writeDisposition?: string;
+      };
+      delete result.writeDisposition;
+      return result;
+    }
     const parsed = parseOrThrow(daybookCreateCareEntrySchema, input);
     this.assertPermittedDate(parsed.localDate);
     const dashboard = await this.repository.getDashboard(
       this.context,
       parsed.localDate,
     );
+    if (dashboard.dailyLog.status !== "open") {
+      throw new Error("DAY_FINALIZED");
+    }
     if (
-      this.context.agent?.expectedDayVersion &&
+      this.context.operation?.expectedDayVersion &&
       (await this.repository.getDayVersion(this.context, parsed.localDate)) !==
-        this.context.agent.expectedDayVersion
+        this.context.operation.expectedDayVersion
     ) {
       throw new Error("VERSION_CONFLICT");
     }
@@ -307,7 +320,7 @@ export class DaybookService {
 
   async updateCareEntry(input: unknown) {
     requireOwner(this.context);
-    const replay = await this.repository.getAgentOperationResult<VersionedCareEntry>(
+    const replay = await this.repository.getOperationResult<VersionedCareEntry>(
       this.context,
     );
     if (replay.found) return replay.result;
@@ -328,7 +341,7 @@ export class DaybookService {
 
   async correctCareEntry(input: unknown) {
     requireOwner(this.context);
-    const replay = await this.repository.getAgentOperationResult<RecordRevision>(
+    const replay = await this.repository.getOperationResult<RecordRevision>(
       this.context,
     );
     if (replay.found) return replay.result;
@@ -349,7 +362,7 @@ export class DaybookService {
 
   async updateDayNotes(input: unknown) {
     requireOwner(this.context);
-    const replay = await this.repository.getAgentOperationResult<
+    const replay = await this.repository.getOperationResult<
       Awaited<ReturnType<ParentingRepository["updateDailyLogNotes"]>>
     >(this.context);
     if (replay.found) return replay.result;
@@ -360,7 +373,7 @@ export class DaybookService {
 
   async previewCareEntryCorrection(input: unknown) {
     requireOwner(this.context);
-    const replay = await this.repository.getAgentOperationResult<{
+    const replay = await this.repository.getOperationResult<{
       current: ReturnType<typeof careEntryFields>;
       proposed: ReturnType<typeof careEntryFields>;
       diff: Array<{ field: string; from: unknown; to: unknown }>;
@@ -413,7 +426,7 @@ export class DaybookService {
   }
 
   async confirmCareEntryCorrection(handle: string) {
-    const replay = await this.repository.getAgentOperationResult<RecordRevision>(
+    const replay = await this.repository.getOperationResult<RecordRevision>(
       this.context,
     );
     if (replay.found) {
@@ -434,10 +447,10 @@ export class DaybookService {
 
   async previewDayFinalization(
     localDate: string,
-    expectedDayVersion = this.context.agent?.expectedDayVersion,
+    expectedDayVersion = this.context.operation?.expectedDayVersion,
   ) {
     requireOwner(this.context);
-    const replay = await this.repository.getAgentOperationResult<{
+    const replay = await this.repository.getOperationResult<{
       localDate: string;
       status: "open";
       notes?: string;
@@ -486,7 +499,7 @@ export class DaybookService {
   }
 
   async confirmDayFinalization(handle: string) {
-    const replay = await this.repository.getAgentOperationResult<
+    const replay = await this.repository.getOperationResult<
       Awaited<ReturnType<ParentingRepository["finalizeDailyLog"]>>
     >(this.context);
     if (replay.found) {
@@ -513,7 +526,7 @@ export class DaybookService {
 
   async finalizeDay(localDate: string) {
     requireOwner(this.context);
-    const replay = await this.repository.getAgentOperationResult<
+    const replay = await this.repository.getOperationResult<
       Awaited<ReturnType<ParentingRepository["finalizeDailyLog"]>>
     >(this.context);
     if (replay.found) return replay.result;
@@ -554,7 +567,8 @@ export class DaybookService {
 
   private confirmationHandle(): string {
     const agent = this.context.agent;
-    if (!agent?.operationId || !agent.toolName || !agent.inputHash) {
+    const operation = this.context.operation;
+    if (!agent || !operation) {
       throw new Error("VALIDATION_ERROR");
     }
     const key = process.env.CLERK_SECRET_KEY || ephemeralConfirmationKey;
@@ -565,9 +579,9 @@ export class DaybookService {
           workspaceId: this.context.workspace.id,
           memberId: this.context.member.id,
           oauthClientId: agent.oauthClientId,
-          toolName: agent.toolName,
-          operationId: agent.operationId,
-          inputHash: agent.inputHash,
+          toolName: operation.operationName,
+          operationId: operation.operationId,
+          inputHash: operation.inputHash,
         }),
       )
       .digest("base64url");
@@ -575,7 +589,9 @@ export class DaybookService {
 
   private async requireConfirmation(handle: string, kind: AgentConfirmationKind) {
     requireOwner(this.context);
-    if (!this.context.agent) throw new Error("FORBIDDEN");
+    if (!this.context.agent || !this.context.operation) {
+      throw new Error("FORBIDDEN");
+    }
     const confirmation = await this.repository.getAgentConfirmation(
       this.context,
       sha256(handle),
@@ -586,7 +602,7 @@ export class DaybookService {
     if (confirmation.kind !== kind) throw new Error("CONFIRMATION_EXPIRED");
     if (
       confirmation.consumedByOperationId &&
-      confirmation.consumedByOperationId !== this.context.agent.operationId
+      confirmation.consumedByOperationId !== this.context.operation?.operationId
     ) {
       throw new Error("CONFIRMATION_EXPIRED");
     }
@@ -598,13 +614,18 @@ export class DaybookService {
     kind: AgentConfirmationKind,
     baseVersion: string,
   ): RequestContext {
-    if (!this.context.agent) throw new Error("FORBIDDEN");
+    if (!this.context.agent || !this.context.operation) {
+      throw new Error("FORBIDDEN");
+    }
     return {
       ...this.context,
       agent: {
         ...this.context.agent,
         confirmationTokenHash: sha256(handle),
         confirmationKind: kind,
+      },
+      operation: {
+        ...this.context.operation,
         ...(kind === "care_entry_correction"
           ? { expectedRecordVersion: baseVersion }
           : { expectedDayVersion: baseVersion }),

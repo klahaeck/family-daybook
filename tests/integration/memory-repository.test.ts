@@ -5,7 +5,11 @@ import { MemoryParentingRepository, resetMemoryRepository } from "@/lib/reposito
 import type { Identity } from "@/lib/auth/identity";
 import type { Attachment } from "@/lib/domain/types";
 import { generateEvidencePackage } from "@/lib/reporting/generate-package";
-import { getPrivateFile, putPrivateFile } from "@/lib/storage/private-files";
+import {
+  deletePrivateFiles,
+  getPrivateFile,
+  putPrivateFile,
+} from "@/lib/storage/private-files";
 import {
   completeAttachmentUpload,
   prepareAttachmentUpload,
@@ -66,6 +70,53 @@ describe("memory repository integration", () => {
     expect(first.sha256).toHaveLength(64);
     expect(second.id).toBe(first.id);
     expect(incidentsData.attachments).toHaveLength(1);
+  });
+
+  it("replays an attachment preparation claim for the same mobile operation", async () => {
+    vi.stubEnv("BLOB_READ_WRITE_TOKEN", "");
+    vi.stubEnv("BLOB_STORE_ID", "");
+    vi.stubEnv("VERCEL_OIDC_TOKEN", "");
+    const repository = new MemoryParentingRepository();
+    const baseContext = await repository.resolveContext(identity);
+    const incident = await repository.createIncident(baseContext, {
+      category: "other",
+      occurredAt: "2026-07-14T12:00:00.000Z",
+      childIds: [],
+      peoplePresent: [],
+      witnesses: [],
+      observations: "A record used to verify attachment preparation replay.",
+    });
+    const input = {
+      recordType: "incident" as const,
+      recordId: incident.id,
+      originalName: "evidence.pdf",
+      declaredContentType: "application/pdf" as const,
+      declaredSize: 32,
+    };
+    const context = {
+      ...baseContext,
+      operation: {
+        source: "mobile_api" as const,
+        clientKey: "mobile_api",
+        operationName: "attachment.prepare",
+        operationId: "77556644-3322-4110-8999-aabbccddeeff",
+        inputHash: "same-input",
+      },
+    };
+
+    const first = await prepareAttachmentUpload(context, input);
+    const replay = await prepareAttachmentUpload(context, input);
+
+    expect(replay.claim).toEqual(first.claim);
+    await expect(
+      prepareAttachmentUpload(
+        {
+          ...context,
+          operation: { ...context.operation, inputHash: "different-input" },
+        },
+        { ...input, originalName: "different.pdf" },
+      ),
+    ).rejects.toThrow("IDEMPOTENCY_CONFLICT");
   });
 
   it("rejects a file whose signature does not match its prepared video type", async () => {
@@ -1063,6 +1114,178 @@ describe("memory repository integration", () => {
     expect(pdf?.body.length).toBeGreaterThan(500);
     expect(zip?.contentType).toBe("application/zip");
     expect(artifacts.manifestHash).toHaveLength(64);
+
+    await deletePrivateFiles([artifacts.zipPathname]);
+    const recovered = await generateEvidencePackage(source!);
+    expect(recovered).toMatchObject({
+      pdfPathname: artifacts.pdfPathname,
+      zipPathname: artifacts.zipPathname,
+      manifestHash: artifacts.manifestHash,
+      createdPathnames: [artifacts.zipPathname],
+    });
+  });
+
+  it("keeps report evidence immutable and includes every captured current revision", async () => {
+    const repository = new MemoryParentingRepository();
+    const context = await repository.resolveContext(identity);
+    const date = localDateInTimezone(new Date(), context.workspace.timezone);
+    await repository.finalizeDailyLog(context, date);
+    const report = await repository.createReport(context, {
+      from: date,
+      to: date,
+      childIds: [],
+      includeCare: true,
+      includeAppointments: true,
+      includeIncidents: true,
+    });
+    const before = await repository.getReportSource(context, report.id);
+    expect(before?.entries.length).toBeGreaterThan(0);
+
+    const capturedEntry = before!.entries[0];
+    await repository.correctRecord(context, {
+      recordType: "care_entry",
+      recordId: capturedEntry.id,
+      correctedText: "Changed after the report request.",
+      reason: "Verify point-in-time report evidence.",
+    });
+    await repository.createIncident(context, {
+      category: "other",
+      occurredAt: `${date}T18:00:00.000Z`,
+      childIds: capturedEntry.childIds,
+      peoplePresent: [],
+      witnesses: [],
+      observations: "Created after the report request.",
+    });
+    const settings = await repository.getSettings(context);
+    await repository.updateSettings(context, {
+      name: "Changed after report creation",
+      timezone: settings.workspace.timezone,
+      hardDeleteEnabled: settings.workspace.hardDeleteEnabled,
+      children: settings.children.map((child) => ({
+        id: child.id,
+        displayName: child.displayName,
+        birthdate: child.birthdate,
+      })),
+      caregivers: settings.caregivers.map((caregiver) => ({
+        id: caregiver.id,
+        displayName: caregiver.displayName,
+        relationship: caregiver.relationship,
+      })),
+      routineItems: settings.template.items.map((item) => ({
+        id: item.id,
+        label: item.label,
+        suggestedTime: item.suggestedTime,
+        childIds: item.childIds,
+        weekdays: item.weekdays,
+        active: item.active,
+      })),
+    });
+
+    const after = await repository.getReportSource(context, report.id);
+    expect(after).toEqual(before);
+    expect(after?.incidents).toEqual([]);
+    expect(after?.workspace.name).not.toBe("Changed after report creation");
+    const includedRevisionIds = new Set(
+      after?.revisions.map((revision) => revision.id),
+    );
+    for (const record of [
+      ...(after?.entries ?? []),
+      ...(after?.appointments ?? []),
+      ...(after?.incidents ?? []),
+      ...(after?.arrangements ?? []),
+    ]) {
+      expect(includedRevisionIds.has(record.currentRevisionId)).toBe(true);
+      expect(report.recordRevisionIds).toContain(record.currentRevisionId);
+    }
+  });
+
+  it("changes the day ETag for special-day creation, updates, and corrections", async () => {
+    const repository = new MemoryParentingRepository();
+    const base = await repository.resolveContext(identity);
+    const settings = await repository.getSettings(base);
+    const localDate = "2026-08-14";
+    await repository.getDashboard(base, localDate);
+    const beforeCreate = await repository.getDayVersion(base, localDate);
+    const assignments = settings.children.map((child) => ({
+      childId: child.id,
+      caregiverIds: [settings.caregivers[0].id],
+    }));
+    const tasks = createArrangementTasksForDate(
+      localDate,
+      settings.template,
+      settings.children,
+    );
+    const [created] = await repository.createSpecialArrangement(base, {
+      title: "Teacher in-service day",
+      startDate: localDate,
+      endDate: localDate,
+      assignments,
+      days: [{ localDate, tasks }],
+    });
+    const afterCreate = await repository.getDayVersion(base, localDate);
+    expect(afterCreate).not.toBe(beforeCreate);
+
+    const createdDetail = await repository.getSpecialArrangement(base, created.id);
+    const updateContext = {
+      ...base,
+      operation: {
+        source: "mobile_api" as const,
+        clientKey: "mobile_api",
+        operationName: "special_day.update",
+        operationId: "1a00c345-d279-4bd4-aec6-b9300bd5a550",
+        inputHash: "update-special-day",
+        expectedRecordVersion: createdDetail!.recordVersion,
+      },
+    };
+    const updated = await repository.updateSpecialArrangement(updateContext, {
+      recordId: created.id,
+      title: "Updated teacher in-service day",
+      status: "active",
+      assignments,
+      tasks: created.tasks,
+    });
+    const afterUpdate = await repository.getDayVersion(base, localDate);
+    expect(afterUpdate).not.toBe(afterCreate);
+
+    const staleFinalizeContext = {
+      ...base,
+      operation: {
+        source: "mobile_api" as const,
+        clientKey: "mobile_api",
+        operationName: "finalize_daily_log",
+        operationId: "74916149-b92d-4641-baf2-c9bc0608be20",
+        inputHash: "finalize-special-day",
+        expectedDayVersion: afterCreate,
+      },
+    };
+    await expect(
+      repository.finalizeDailyLog(staleFinalizeContext, localDate),
+    ).rejects.toThrow("CONFIRMATION_STALE");
+
+    await repository.finalizeDailyLog(base, localDate);
+    const afterFinalize = await repository.getDayVersion(base, localDate);
+    const correctionContext = {
+      ...base,
+      operation: {
+        source: "mobile_api" as const,
+        clientKey: "mobile_api",
+        operationName: "special_day.correct",
+        operationId: "2355037b-a9b3-4754-82f2-a725ebba9979",
+        inputHash: "correct-special-day",
+        expectedRecordVersion: updated.recordVersion,
+      },
+    };
+    await repository.correctSpecialArrangement(correctionContext, {
+      recordId: created.id,
+      title: "Corrected teacher in-service day",
+      status: "active",
+      assignments,
+      tasks: updated.tasks,
+      reason: "Correct the planned title.",
+    });
+    expect(await repository.getDayVersion(base, localDate)).not.toBe(
+      afterFinalize,
+    );
   });
 
   it("plans, edits, finalizes, corrects, cancels, and reports special arrangements", async () => {
@@ -1310,5 +1533,23 @@ describe("memory repository integration", () => {
     });
     expect(tombstone.priorHashes).toHaveLength(1);
     expect(await repository.getRecordBundle(context, "care_entry", entry.id)).toBeNull();
+
+    const retryContext = {
+      ...context,
+      operation: {
+        source: "mobile_api" as const,
+        clientKey: "mobile_api",
+        operationName: "record.purge",
+        operationId: "6a57627b-f238-4c25-8f01-55889b9078c3",
+        inputHash: "new-logical-retry",
+      },
+    };
+    await expect(
+      repository.hardPurge(retryContext, {
+        recordType: "care_entry",
+        recordId: entry.id,
+        reason: "Retry cleanup after an interrupted client response.",
+      }),
+    ).resolves.toEqual(tombstone);
   });
 });

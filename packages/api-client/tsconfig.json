@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "paths": {
+      "@family-daybook/contracts": ["../contracts/src/index.ts"]
+    },
+    "strict": true,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "outDir": "dist",
+    "skipLibCheck": true
+  },
+  "include": ["src/**/*.ts"]
+}
