@@ -78,6 +78,16 @@ export const DAYBOOK_TOOL_CATALOG = [
     requiresConfirmation: false,
   },
   {
+    name: "record_routine_item",
+    title: "Record Routine Item",
+    description:
+      "Record a routine by name or ID, asking only for required facts that are still missing.",
+    scope: DAYBOOK_SCOPES.write,
+    group: "Open-day updates",
+    annotations: writeAnnotations,
+    requiresConfirmation: false,
+  },
+  {
     name: "update_care_entry",
     title: "Update Care Entry",
     description: "Update an existing record while its care day is open.",

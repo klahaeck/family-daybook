@@ -3,7 +3,7 @@
   "name": "com.myfamilydaybook/family-daybook",
   "title": "Family Daybook",
   "description": "Authorized tools to read family records, update open days, and confirm protected changes.",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "remotes": [
     {
       "type": "streamable-http",

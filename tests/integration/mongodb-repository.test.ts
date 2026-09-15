@@ -291,4 +291,71 @@ describe.skipIf(!configured)("MongoDB repository integration", () => {
       ),
     ).toHaveLength(1);
   });
+
+  it("creates one routine slot for concurrent distinct operation IDs", async () => {
+    const [{ MongoParentingRepository }, integrity, { getDatabase }] =
+      await Promise.all([
+        import("@/lib/repository/mongo-repository"),
+        import("@/lib/domain/integrity"),
+        import("@/lib/db/mongodb"),
+      ]);
+    const repository = new MongoParentingRepository();
+    const base = await repository.resolveContext({
+      authUserId: "mongo-routine-owner",
+      email: "mongo-routine-owner@example.test",
+      displayName: "Mongo Routine Owner",
+      mfaEnabled: true,
+      demo: false,
+    });
+    const localDate = "2026-09-15";
+    const dashboard = await repository.getDashboard(base, localDate);
+    const routine = dashboard.tasks.find(
+      (task) => task.source === "routine" && task.taskKey === "bedtime_story",
+    )!;
+    const mutation = {
+      localDate,
+      templateItemId: routine.templateItemId,
+      taskKey: routine.taskKey,
+      taskLabel: routine.label,
+      childIds: routine.childIds,
+      caregiverIds: [],
+      status: "missed" as const,
+      occurredAt: "2026-09-16T01:00:00.000Z",
+    };
+    const operationIds = [
+      "2ce9a2ef-0e3f-4382-8172-ebbe2d705e82",
+      "978577f0-9c91-46b6-bba3-595818a84a37",
+    ];
+    const contexts = operationIds.map((operationId) => ({
+      ...base,
+      agent: {
+        source: "mcp" as const,
+        oauthClientId: "https://approved-client.example/mcp.json",
+        toolName: "record_routine_item",
+        operationId,
+        inputHash: integrity.sha256(
+          integrity.canonicalJson({ operationId, ...mutation }),
+        ),
+      },
+    }));
+
+    const results = await Promise.all(
+      contexts.map((context) => repository.createCareEntry(context, mutation)),
+    );
+    expect(results.map((result) => result.writeDisposition).sort()).toEqual([
+      "created",
+      "existing",
+    ]);
+    expect(new Set(results.map((result) => result.id)).size).toBe(1);
+    expect(
+      (await repository.getDashboard(base, localDate)).recentEntries.filter(
+        (entry) => entry.templateItemId === routine.templateItemId,
+      ),
+    ).toHaveLength(1);
+    expect(
+      await (await getDatabase())
+        .collection("routineRecordSlots")
+        .countDocuments({ workspaceId: base.workspace.id }),
+    ).toBe(1);
+  });
 });

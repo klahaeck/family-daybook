@@ -22,10 +22,11 @@ Use only a verified publisher identity whose displayed name is **Family Daybook*
 ## Starter prompts
 
 1. “Show today’s care entries and any routine tasks that are still incomplete.”
-2. “After checking the current daybook context, add a factual care entry for the details I provide.”
-3. “Update today’s day notes with this summary after fetching the current day version.”
-4. “Preview a correction to this finalized care entry, show me every changed field, and wait for my confirmation.”
-5. “Preview finalizing today’s daybook and show the exact summary before asking me to confirm.”
+2. “Mark bedtime story done. Ask me for any required details you still need.”
+3. “After checking the current daybook context, add a factual care entry for the details I provide.”
+4. “Update today’s day notes with this summary after fetching the current day version.”
+5. “Preview a correction to this finalized care entry, show me every changed field, and wait for my confirmation.”
+6. “Preview finalizing today’s daybook and show the exact summary before asking me to confirm.”
 
 ## Positive tests
 
@@ -36,28 +37,35 @@ Use only a verified publisher identity whose displayed name is **Family Daybook*
 - **Expected result:** A factual summary of visible entries, completion status, and incomplete tasks.
 - **Fixture:** Synthetic owner workspace with at least one completed and one incomplete routine task for the local date.
 
-### 2. Create a factual care entry
+### 2. Record a named routine item
 
-- **Prompt:** “Record that Child A completed the planned reading routine with Caregiver A at 7:00 p.m.”
+- **Prompt:** “Mark bedtime story done.”
+- **Expected behavior:** Call `record_routine_item` with a new operation ID. Ask for the date, caregiver, and actual local time when omitted, using native form elicitation when supported or the returned continuation token otherwise. Do not create a record until the required answers are complete.
+- **Expected result:** The created record identifier and version, or the existing record without a duplicate.
+- **Fixture:** Synthetic owner workspace with one child, an active caregiver, and a bedtime story routine on an open day.
+
+### 3. Create a factual care entry
+
+- **Prompt:** “Record that Child A completed a custom reading activity with Caregiver A at 7:00 p.m.”
 - **Expected behavior:** Read context and day first, resolve authorized identifiers, then call `create_care_entry` once with a new operation ID.
 - **Expected result:** The created record identifier and a concise confirmation.
-- **Fixture:** Synthetic owner workspace with the named active child, caregiver, and routine on an open day.
+- **Fixture:** Synthetic owner workspace with the named active child and caregiver on an open day.
 
-### 3. Update day notes safely
+### 4. Update day notes safely
 
 - **Prompt:** “Add ‘School form placed in the backpack’ to today’s day notes.”
 - **Expected behavior:** Fetch the day, preserve relevant existing notes, and call `update_day_notes` with the fresh day version and a new operation ID.
 - **Expected result:** The updated notes and date.
 - **Fixture:** Synthetic owner workspace with an open current day.
 
-### 4. Preview and confirm a finalized correction
+### 5. Preview and confirm a finalized correction
 
 - **Prompt:** “Change the time on the finalized reading entry to 7:15 p.m. because the original time was entered incorrectly.”
 - **Expected behavior:** Fetch the record and current version, call `preview_care_entry_correction`, show the diff, and stop for explicit confirmation. Only after confirmation may `confirm_care_entry_correction` consume the returned handle.
 - **Expected result:** First a non-mutating diff; after confirmation, an appended revision identifier.
 - **Fixture:** Synthetic finalized care entry with a known current version.
 
-### 5. Preview day finalization
+### 6. Preview day finalization
 
 - **Prompt:** “Prepare today for finalization and show me what will be locked.”
 - **Expected behavior:** Fetch the current day, call `preview_day_finalization`, present the returned summary, and do not call `confirm_day_finalization` without a separate explicit confirmation.
@@ -89,4 +97,4 @@ Use only a verified publisher identity whose displayed name is **Family Daybook*
 - Create a dedicated synthetic owner workspace with all three OAuth scopes and no real family records.
 - Provide credentials only in the private submission portal. Do not place credentials in the repository, public website, release notes, analytics, or application logs.
 - The account must work without MFA, SMS, email confirmation, or private-network access during review. Disable or rotate it after review.
-- **Initial release note:** “Initial Family Daybook remote MCP submission with ten OAuth-protected tools for authorized record reads, open-day updates, correction previews and confirmations, and day-finalization previews and confirmations.”
+- **Release note:** “Family Daybook MCP 1.1 adds named routine recording with native form elicitation and structured conversational fallback across eleven OAuth-protected tools.”

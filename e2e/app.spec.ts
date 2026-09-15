@@ -110,6 +110,8 @@ test("agent access documents the live catalog and safety contract", async ({ pag
   await expect(page.getByText("http://127.0.0.1:3100/mcp", { exact: true })).toBeVisible();
   await expect(page.locator("code", { hasText: /^get_/ })).toHaveCount(3);
   await expect(page.locator("code", { hasText: /^create_|^update_|^preview_|^confirm_/ })).toHaveCount(7);
+  await expect(page.locator("code", { hasText: /^record_/ })).toHaveCount(1);
+  await expect(page.getByRole("heading", { name: "“Mark bedtime story done.”" })).toBeVisible();
   await expect(page.getByText(/cannot cross workspace boundaries/i)).toBeVisible();
   const jsonLd = await page.locator('script[type="application/ld+json"]').textContent();
   expect(JSON.parse(jsonLd ?? "{}")["@graph"]).toHaveLength(2);
@@ -175,7 +177,7 @@ test("public routes expose the intended crawler metadata", async ({ page, reques
   expect(capabilities.headers()["access-control-allow-origin"]).toBe("*");
   const capabilityBody = await capabilities.json();
   expect(capabilityBody.mcp.endpoint).toBe("http://127.0.0.1:3100/mcp");
-  expect(capabilityBody.tools).toHaveLength(10);
+  expect(capabilityBody.tools).toHaveLength(11);
 
   const llms = await request.get("/llms.txt");
   expect(llms.ok()).toBe(true);

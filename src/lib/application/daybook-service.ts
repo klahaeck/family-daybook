@@ -242,16 +242,19 @@ export class DaybookService {
 
   async createCareEntry(input: unknown) {
     requireOwner(this.context);
-    const replay = await this.repository.getAgentOperationResult<VersionedCareEntry>(
-      this.context,
-    );
-    if (replay.found) return replay.result;
     const parsed = parseOrThrow(daybookCreateCareEntrySchema, input);
     this.assertPermittedDate(parsed.localDate);
     const dashboard = await this.repository.getDashboard(
       this.context,
       parsed.localDate,
     );
+    if (
+      this.context.agent?.expectedDayVersion &&
+      (await this.repository.getDayVersion(this.context, parsed.localDate)) !==
+        this.context.agent.expectedDayVersion
+    ) {
+      throw new Error("VERSION_CONFLICT");
+    }
     await this.assertActiveReferences(parsed.childIds, parsed.caregiverIds);
     assertUnique(parsed.childIds);
     assertUnique(parsed.caregiverIds);
@@ -280,23 +283,26 @@ export class DaybookService {
     }
     this.assertOccurrenceDate(parsed.occurredAt, parsed.localDate);
 
-    return this.repository.createCareEntry(this.context, {
-      localDate: parsed.localDate,
-      templateItemId: source.kind === "routine" ? source.templateItemId : undefined,
-      arrangementTaskId:
-        source.kind === "special_arrangement"
-          ? source.arrangementTaskId
-          : undefined,
-      taskKey: source.kind === "custom" ? "custom" : task!.taskKey,
-      taskLabel: source.kind === "custom" ? source.label : task!.label,
-      childIds: parsed.childIds,
-      caregiverIds: parsed.caregiverIds,
-      status: parsed.status,
-      occurredAt: parsed.occurredAt,
-      durationMinutes: parsed.durationMinutes,
-      activityType: parsed.activityType,
-      notes: parsed.notes,
+    const entry = await this.repository.createCareEntry(this.context, {
+        localDate: parsed.localDate,
+        templateItemId:
+          source.kind === "routine" ? source.templateItemId : undefined,
+        arrangementTaskId:
+          source.kind === "special_arrangement"
+            ? source.arrangementTaskId
+            : undefined,
+        taskKey: source.kind === "custom" ? "custom" : task!.taskKey,
+        taskLabel: source.kind === "custom" ? source.label : task!.label,
+        childIds: parsed.childIds,
+        caregiverIds: parsed.caregiverIds,
+        status: parsed.status,
+        occurredAt: parsed.occurredAt,
+        durationMinutes: parsed.durationMinutes,
+        activityType: parsed.activityType,
+        notes: parsed.notes,
     });
+    delete (entry as Partial<typeof entry>).writeDisposition;
+    return entry;
   }
 
   async updateCareEntry(input: unknown) {

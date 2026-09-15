@@ -1,8 +1,19 @@
 import "server-only";
 
-import type { AuthInfo, ServerContext } from "@modelcontextprotocol/server";
+import { randomBytes } from "node:crypto";
+
+import type {
+  AuthInfo,
+  ElicitRequestFormParams,
+  ServerContext,
+} from "@modelcontextprotocol/server";
 import {
+  acceptedContent,
   bearerAuthChallengeResponse,
+  CLIENT_CAPABILITIES_META_KEY,
+  createRequestStateCodec,
+  inputRequired,
+  inputResponse,
   OAuthError,
   OAuthErrorCode,
 } from "@modelcontextprotocol/server";
@@ -16,6 +27,16 @@ import {
   daybookCreateCareEntrySchema,
   DaybookServiceError,
 } from "@/lib/application/daybook-service";
+import {
+  createdRoutineResult,
+  planRoutineRecording,
+  recordRoutineItemInputSchema,
+  routineQuestionJsonSchema,
+  routineQuestionSchema,
+  type RecordRoutineItemInput,
+  type RoutineWorkflowState,
+  workflowStateFor,
+} from "@/lib/application/routine-recording";
 import { getIdentityForAuthUserId, clerkConfigured } from "@/lib/auth/identity";
 import {
   isBillingAccessUnavailableError,
@@ -52,8 +73,80 @@ const outputSchema = z.object({
     })
     .optional(),
 });
+const routineQuestionOutputSchema = z.object({
+  field: z.enum([
+    "localDate",
+    "routineId",
+    "status",
+    "childIds",
+    "caregiverIds",
+    "localTime",
+  ]),
+  title: z.string(),
+  prompt: z.string(),
+  type: z.enum(["date", "time", "single_select", "multi_select"]),
+  choices: z
+    .array(z.object({ value: z.string(), title: z.string() }))
+    .optional(),
+});
+const routineOutputSchema = z.object({
+  data: z
+    .discriminatedUnion("result", [
+      z.object({
+        result: z.literal("needs_input"),
+        questions: z.array(routineQuestionOutputSchema),
+        resolvedContext: z.object({
+          timezone: z.string(),
+          localDate: z.string().optional(),
+          routine: z
+            .object({
+              id: z.string(),
+              name: z.string(),
+              scheduledTime: z.string(),
+            })
+            .optional(),
+        }),
+        continuationToken: z.string(),
+        expiresAt: z.string().datetime(),
+      }),
+      z.object({
+        result: z.literal("created"),
+        record: z.unknown(),
+        recordVersion: version,
+      }),
+      z.object({
+        result: z.literal("already_recorded"),
+        record: z.unknown(),
+        recordVersion: version,
+      }),
+      z.object({ result: z.literal("cancelled") }),
+    ])
+    .optional(),
+  error: outputSchema.shape.error,
+});
 
 type ToolContext = ServerContext;
+
+const ephemeralRoutineStateKey = randomBytes(32).toString("hex");
+const routineStateCodec = createRequestStateCodec<RoutineWorkflowState>({
+  key: sha256(
+    `family-daybook:record-routine-item:${process.env.CLERK_SECRET_KEY ?? ephemeralRoutineStateKey}`,
+  ),
+  ttlSeconds: 5 * 60,
+  bind: (ctx) => {
+    const authInfo = ctx.http?.authInfo;
+    const extra = authInfo?.extra as
+      | { userId?: unknown; daybookContext?: RequestContext }
+      | undefined;
+    return [
+      "record_routine_item",
+      typeof extra?.userId === "string" ? extra.userId : "",
+      authInfo?.clientId ?? "",
+      extra?.daybookContext?.workspace.id ?? "",
+      extra?.daybookContext?.member.id ?? "",
+    ].join("\0");
+  },
+});
 
 function stableError(error: unknown) {
   const rawCode = error instanceof Error ? error.message : "INTERNAL_ERROR";
@@ -67,6 +160,8 @@ function stableError(error: unknown) {
     "CONFIRMATION_EXPIRED",
     "CONFIRMATION_STALE",
     "IDEMPOTENCY_CONFLICT",
+    "ROUTINE_UNAVAILABLE",
+    "WORKFLOW_EXPIRED",
   ]);
   const code = supported.has(rawCode)
     ? rawCode
@@ -87,6 +182,10 @@ function stableError(error: unknown) {
     CONFIRMATION_EXPIRED: "The confirmation is missing, expired, or already used.",
     CONFIRMATION_STALE: "The confirmed data changed; request a new preview.",
     IDEMPOTENCY_CONFLICT: "The operation ID was already used for different input.",
+    ROUTINE_UNAVAILABLE:
+      "Routine recording is unavailable for this date or special-day plan.",
+    WORKFLOW_EXPIRED:
+      "The routine-recording questions expired or do not belong to this authorization.",
     INTERNAL_ERROR: "The operation could not be completed.",
   };
   return {
@@ -117,6 +216,17 @@ function failure(error: unknown) {
 }
 
 async function serviceFor(
+  ctx: ToolContext,
+  toolName: DaybookToolName,
+  input: Record<string, unknown>,
+) {
+  return createDaybookService(
+    await getRepository(),
+    await contextFor(ctx, toolName, input),
+  );
+}
+
+async function contextFor(
   ctx: ToolContext,
   toolName: DaybookToolName,
   input: Record<string, unknown>,
@@ -152,7 +262,139 @@ async function serviceFor(
         typeof input.dayVersion === "string" ? input.dayVersion : undefined,
     },
   };
-  return createDaybookService(await getRepository(), context);
+  return context;
+}
+
+function supportsFormElicitation(ctx: ToolContext): boolean {
+  const envelope = ctx.mcpReq.envelope as Record<string, unknown> | undefined;
+  const capabilities = envelope?.[CLIENT_CAPABILITIES_META_KEY] as
+    | { elicitation?: Record<string, unknown> }
+    | undefined;
+  const elicitation = capabilities?.elicitation;
+  return Boolean(
+    elicitation &&
+      (Object.keys(elicitation).length === 0 ||
+        Object.hasOwn(elicitation, "form")),
+  );
+}
+
+async function runRoutineTool(input: RecordRoutineItemInput, ctx: ToolContext) {
+  try {
+    const nativeState = ctx.mcpReq.requestState<RoutineWorkflowState>();
+    let prior = nativeState;
+    if (!prior && input.continuationToken) {
+      try {
+        prior = await routineStateCodec.verify(input.continuationToken, ctx);
+      } catch {
+        throw new Error("WORKFLOW_EXPIRED");
+      }
+    }
+    if (prior && (prior.version !== 1 || prior.round > 4)) {
+      throw new Error("WORKFLOW_EXPIRED");
+    }
+
+    let nextInput = input;
+    if (nativeState) {
+      const response = inputResponse(ctx.mcpReq.inputResponses, "routineDetails");
+      if (
+        response.kind === "elicit" &&
+        (response.action === "decline" || response.action === "cancel")
+      ) {
+        return success(
+          { result: "cancelled" as const },
+          "Routine recording was cancelled; no record was created.",
+        );
+      }
+      if (response.kind === "elicit" && response.action === "accept") {
+        const accepted = acceptedContent(
+          ctx.mcpReq.inputResponses,
+          "routineDetails",
+          routineQuestionSchema(nativeState.questions),
+        );
+        if (accepted) {
+          nextInput = recordRoutineItemInputSchema.parse({
+            ...input,
+            ...accepted,
+            continuationToken: undefined,
+          });
+        }
+      }
+    }
+
+    const repository = await getRepository();
+    const readContext = await contextFor(ctx, "record_routine_item", {
+      operationId: input.operationId,
+    });
+    const plan = await planRoutineRecording(
+      repository,
+      readContext,
+      nextInput,
+      prior,
+    );
+    if (plan.result === "already_recorded") {
+      return success(
+        {
+          result: plan.result,
+          record: plan.record,
+          recordVersion: plan.recordVersion,
+        },
+        `Routine item was already recorded as ${plan.record.id}; no record was created.`,
+      );
+    }
+    if (plan.result === "needs_input") {
+      const round = (prior?.round ?? 0) + 1;
+      if (round > 4) throw new Error("WORKFLOW_EXPIRED");
+      const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+      const state = workflowStateFor(plan, round, expiresAt);
+      const continuationToken = await routineStateCodec.mint(state, ctx);
+      if (supportsFormElicitation(ctx)) {
+        return inputRequired({
+          inputRequests: {
+            routineDetails: inputRequired.elicit({
+              message: "Provide the missing details to record this routine item.",
+              requestedSchema: routineQuestionJsonSchema(
+                plan.questions,
+              ) as unknown as ElicitRequestFormParams["requestedSchema"],
+            }),
+          },
+          requestState: continuationToken,
+        });
+      }
+      return success(
+        {
+          result: plan.result,
+          questions: plan.questions,
+          resolvedContext: plan.resolvedContext,
+          continuationToken,
+          expiresAt,
+        },
+        "More information is required before the routine item can be recorded.",
+      );
+    }
+
+    const writeContext = await contextFor(
+      ctx,
+      "record_routine_item",
+      plan.effectiveInput,
+    );
+    if (
+      plan.snapshot.dayVersion &&
+      (await repository.getDayVersion(writeContext, plan.mutation.localDate)) !==
+        plan.snapshot.dayVersion
+    ) {
+      throw new Error("VERSION_CONFLICT");
+    }
+    const written = await repository.createCareEntry(writeContext, plan.mutation);
+    const result = createdRoutineResult(written);
+    return success(
+      result,
+      result.result === "created"
+        ? `Created routine record ${result.record.id}.`
+        : `Routine item was already recorded as ${result.record.id}; no record was created.`,
+    );
+  } catch (error) {
+    return failure(error);
+  }
 }
 
 async function runTool<T>(work: () => Promise<T>, summary: (value: T) => string) {
@@ -231,6 +473,16 @@ const rawHandler = createMcpHandler(
           },
           (entry) => `Created care entry ${entry.id}.`,
         ),
+    );
+
+    server.registerTool(
+      "record_routine_item",
+      {
+        ...registrationMetadata("record_routine_item"),
+        inputSchema: recordRoutineItemInputSchema,
+        outputSchema: routineOutputSchema,
+      },
+      runRoutineTool,
     );
 
     server.registerTool(
@@ -356,10 +608,12 @@ const rawHandler = createMcpHandler(
     );
   },
   {
-    serverInfo: { name: "family-daybook", version: "1.0.0" },
+    serverInfo: { name: "family-daybook", version: "1.1.0" },
     instructions:
-      "Use get_daybook_context first. Never guess IDs. Fetch fresh versions before mutations. Corrections and finalization require preview followed by confirmation.",
+      "Use get_daybook_context first. Prefer record_routine_item for named routine completions; answer its questions or retry with its continuation token. Never guess IDs. Fetch fresh versions before other mutations. Corrections and finalization require preview followed by confirmation.",
     maxSubscriptions: 0,
+    inputRequired: { maxRounds: 4, roundTimeoutMs: 5 * 60 * 1000 },
+    requestState: { verify: routineStateCodec.verify },
   },
 );
 

@@ -55,6 +55,7 @@ import {
   withCurrentLateEntryStatus,
 } from "./helpers";
 import type {
+  CareEntryWriteResult,
   ParentingRepository,
   RecordBundle,
   ReportSource,
@@ -564,7 +565,7 @@ export class MemoryParentingRepository implements ParentingRepository {
 
   async createCareEntry(context: RequestContext, input: CareEntryInput) {
     requireOwner(context.member.role);
-    const replay = this.agentReplay<VersionedCareEntry>(context);
+    const replay = this.agentReplay<CareEntryWriteResult>(context);
     if (replay.found) return replay.result;
     const data = state();
     const recordedAt = new Date().toISOString();
@@ -591,6 +592,26 @@ export class MemoryParentingRepository implements ParentingRepository {
         }
       : input;
     assertValidCareEntryDetails(normalizedInput);
+    if (normalizedInput.templateItemId) {
+      const existing = data.careEntries.find(
+        (entry) =>
+          entry.dailyLogId === dailyLog.id &&
+          entry.templateItemId === normalizedInput.templateItemId,
+      );
+      if (existing) {
+        const revision = data.revisions.find(
+          (item) => item.id === existing.currentRevisionId,
+        );
+        if (!revision) throw new Error("REVISION_NOT_FOUND");
+        const result: CareEntryWriteResult = {
+          ...existing,
+          recordVersion: revision.hash,
+          writeDisposition: "existing",
+        };
+        this.recordAgentOperation(context, result);
+        return result;
+      }
+    }
     const recordId = id("care");
     const payload: Record<string, unknown> = { ...normalizedInput };
     for (const field of ["durationMinutes", "activityType", "notes"] as const) {
@@ -633,7 +654,11 @@ export class MemoryParentingRepository implements ParentingRepository {
     }
     data.careEntries.push(entry);
     await this.audit(context, "created", "care_entry", entry.id);
-    const result = { ...entry, recordVersion: revision.hash };
+    const result: CareEntryWriteResult = {
+      ...entry,
+      recordVersion: revision.hash,
+      writeDisposition: "created",
+    };
     this.recordAgentOperation(context, result);
     return result;
   }

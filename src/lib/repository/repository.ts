@@ -53,6 +53,9 @@ export interface RecordBundle {
 }
 
 export type VersionedCareEntry = CareEntry & { recordVersion: string };
+export type CareEntryWriteResult = VersionedCareEntry & {
+  writeDisposition: "created" | "existing";
+};
 export type VersionedDailyLog = DailyLog & { dayVersion: string };
 
 export interface ReportSource {
@@ -109,7 +112,7 @@ export interface ParentingRepository {
   createCareEntry(
     context: RequestContext,
     input: CareEntryInput,
-  ): Promise<VersionedCareEntry>;
+  ): Promise<CareEntryWriteResult>;
   updateCareEntry(
     context: RequestContext,
     input: CareEntryUpdateInput,

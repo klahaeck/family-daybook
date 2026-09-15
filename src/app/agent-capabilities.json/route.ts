@@ -13,7 +13,7 @@ export function GET() {
 
   return Response.json(
     {
-      schemaVersion: "1.0.0",
+      schemaVersion: "1.1.0",
       name: "Family Daybook",
       description:
         "Private family recordkeeping with factual entries, visible correction history, report packages, reviewer access, and authorized MCP tools.",

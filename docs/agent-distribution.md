@@ -58,7 +58,7 @@ Create the required DNS proof through the publisher’s documented key-generatio
 1. Complete business identity verification so the displayed publisher identity is **Family Daybook**.
 2. Configure `OPENAI_APPS_CHALLENGE_TOKEN` with the exact portal token and verify that `/.well-known/openai-apps-challenge` returns only that token.
 3. Create a **With MCP** draft using the fields and tests in `openai-plugin-submission.md`.
-4. Choose a Universal MCP URL, configure OAuth, run Scan Tools, and review all ten tools and their annotations.
+4. Choose a Universal MCP URL, configure OAuth, run Scan Tools, and review all eleven tools and their annotations.
 5. Supply the synthetic review account privately and submit five positive and three negative tests.
 6. Submit for review only when public website, support, privacy, and terms URLs are live and consistent.
 7. After approval, publish from the portal. Add a directory link to `/agent-access` only after a stable public listing URL exists.

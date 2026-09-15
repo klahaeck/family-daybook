@@ -63,6 +63,10 @@ export async function ensureMongoIndexes(): Promise<void> {
     db.collection("members").createIndex({ authUserId: 1 }, { sparse: true }),
     db.collection("careEntries").createIndex({ workspaceId: 1, occurredAt: -1 }),
     db.collection("careEntries").createIndex({ workspaceId: 1, dailyLogId: 1 }),
+    db.collection("routineRecordSlots").createIndex(
+      { workspaceId: 1, routineSlotKey: 1 },
+      { unique: true, sparse: true, name: "routine_record_slot_unique" },
+    ),
     db.collection("appointments").createIndex({ workspaceId: 1, scheduledAt: -1 }),
     db.collection("incidents").createIndex({ workspaceId: 1, occurredAt: -1 }),
     db.collection("recordRevisions").createIndex(

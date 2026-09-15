@@ -49,7 +49,8 @@ describe("public discovery surfaces", () => {
       endpoint: `${origin}/mcp`,
       transport: "streamable-http",
     });
-    expect(body.tools).toHaveLength(10);
+    expect(body.schemaVersion).toBe("1.1.0");
+    expect(body.tools).toHaveLength(11);
     expect(body.tools.map((tool: { name: string }) => tool.name)).toEqual(
       DAYBOOK_TOOL_CATALOG.map((tool) => tool.name),
     );
@@ -112,6 +113,7 @@ describe("public discovery surfaces", () => {
     expect(metadata).toMatchObject({
       name: "com.myfamilydaybook/family-daybook",
       title: "Family Daybook",
+      version: "1.1.0",
       remotes: [
         {
           type: "streamable-http",

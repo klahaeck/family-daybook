@@ -128,6 +128,16 @@ export default async function AgentAccessPage() {
           </div>
         </section>
 
+        <section className="border-b px-4 py-12 sm:px-6 lg:px-8" aria-labelledby="routine-example-heading">
+          <div className="mx-auto max-w-5xl rounded-3xl border bg-card p-6 shadow-sm sm:p-8">
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-primary">Routine example</p>
+            <h2 id="routine-example-heading" className="mt-3 text-2xl font-semibold">“Mark bedtime story done.”</h2>
+            <p className="mt-3 max-w-3xl leading-7 text-muted-foreground">
+              The assistant can resolve the routine by name, then ask only for required details such as the date, caregiver, and actual local time. It creates nothing until those answers are complete.
+            </p>
+          </div>
+        </section>
+
         <section className="bg-[var(--marketing-tint)] px-4 py-16 sm:px-6 sm:py-20 lg:px-8" aria-labelledby="permissions-heading">
           <div className="mx-auto max-w-5xl">
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-primary">OAuth permissions</p>
@@ -146,7 +156,7 @@ export default async function AgentAccessPage() {
         <section className="px-4 py-16 sm:px-6 sm:py-20 lg:px-8" aria-labelledby="tools-heading">
           <div className="mx-auto max-w-5xl">
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-primary">Tool catalog</p>
-            <h2 id="tools-heading" className="mt-4 text-3xl font-semibold tracking-tight sm:text-4xl">Ten tools with bounded responsibilities.</h2>
+            <h2 id="tools-heading" className="mt-4 text-3xl font-semibold tracking-tight sm:text-4xl">Eleven tools with bounded responsibilities.</h2>
             <p className="mt-4 max-w-3xl leading-7 text-muted-foreground">Tool names and descriptions below are generated from the same catalog used by the live MCP server.</p>
             <div className="mt-10 space-y-10">
               {groups.map((group) => (

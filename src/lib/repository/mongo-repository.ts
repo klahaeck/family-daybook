@@ -9,7 +9,13 @@ import {
   localDateInTimezone,
   weekdayForLocalDate,
 } from "@/lib/domain/dates";
-import { createAuditHash, createRevisionHash, id } from "@/lib/domain/integrity";
+import {
+  canonicalJson,
+  createAuditHash,
+  createRevisionHash,
+  id,
+  sha256,
+} from "@/lib/domain/integrity";
 import type {
   Appointment,
   Attachment,
@@ -60,6 +66,7 @@ import {
 } from "./helpers";
 import { toPlainData } from "./to-plain-data";
 import type {
+  CareEntryWriteResult,
   ParentingRepository,
   RecordBundle,
   ReportSource,
@@ -73,6 +80,16 @@ import type {
 } from "@/lib/agents/types";
 
 type AppDocument<T> = T & Document;
+
+interface RoutineRecordSlot {
+  id: string;
+  workspaceId: string;
+  routineSlotKey: string;
+  dailyLogId: string;
+  templateItemId: string;
+  careEntryId: string;
+  createdAt: string;
+}
 
 async function col<T>(name: string): Promise<Collection<AppDocument<T>>> {
   return collection<AppDocument<T>>(name);
@@ -680,7 +697,7 @@ export class MongoParentingRepository implements ParentingRepository {
 
   async createCareEntry(context: RequestContext, input: CareEntryInput) {
     requireOwner(context.member.role);
-    const replay = await this.agentReplay<VersionedCareEntry>(context);
+    const replay = await this.agentReplay<CareEntryWriteResult>(context);
     if (replay.found) return replay.result;
     const log = await this.ensureDailyLog(context, input.localDate);
     if (input.templateItemId && input.arrangementTaskId) {
@@ -708,6 +725,39 @@ export class MongoParentingRepository implements ParentingRepository {
         }
       : input;
     assertValidCareEntryDetails(normalizedInput);
+    const findExistingRoutine = async (
+      session?: ClientSession,
+    ): Promise<CareEntryWriteResult | null> => {
+      if (!normalizedInput.templateItemId) return null;
+      const existing = await (await col<CareEntry>("careEntries")).findOne(
+        {
+          workspaceId: context.workspace.id,
+          dailyLogId: log.id,
+          templateItemId: normalizedInput.templateItemId,
+        },
+        { sort: { occurredAt: -1, recordedAt: -1 }, session },
+      );
+      if (!existing) return null;
+      const currentRevision = await (
+        await col<RecordRevision>("recordRevisions")
+      ).findOne(
+        {
+          workspaceId: context.workspace.id,
+          id: existing.currentRevisionId,
+        },
+        { session },
+      );
+      if (!currentRevision) throw new Error("REVISION_NOT_FOUND");
+      return toPlainData({
+        ...existing,
+        recordVersion: currentRevision.hash,
+        writeDisposition: "existing" as const,
+      });
+    };
+    const existingRoutine = await findExistingRoutine();
+    if (existingRoutine) {
+      return this.agentMutation(context, async () => existingRoutine);
+    }
     const recordedAt = new Date().toISOString();
     const recordId = id("care");
     const revisionPayload: Record<string, unknown> = { ...normalizedInput };
@@ -748,12 +798,54 @@ export class MongoParentingRepository implements ParentingRepository {
     for (const field of ["durationMinutes", "activityType", "notes"] as const) {
       if (entry[field] === undefined) delete entry[field];
     }
-    return this.agentMutation(context, async (session) => {
-      await (await col<CareEntry>("careEntries")).insertOne(entry, { session });
-      await (await col<RecordRevision>("recordRevisions")).insertOne(revision, { session });
-      await this.insertAudit(context, "created", "care_entry", entry.id, session);
-      return toPlainData({ ...entry, recordVersion: revision.hash });
-    });
+    try {
+      return await this.agentMutation(context, async (session) => {
+        if (normalizedInput.templateItemId) {
+          const routineSlotKey = sha256(
+            canonicalJson({
+              dailyLogId: log.id,
+              templateItemId: normalizedInput.templateItemId,
+            }),
+          );
+          await (
+            await col<RoutineRecordSlot>("routineRecordSlots")
+          ).insertOne(
+            {
+              id: id("routine_slot"),
+              workspaceId: context.workspace.id,
+              routineSlotKey,
+              dailyLogId: log.id,
+              templateItemId: normalizedInput.templateItemId,
+              careEntryId: entry.id,
+              createdAt: recordedAt,
+            },
+            { session },
+          );
+        }
+        await (await col<CareEntry>("careEntries")).insertOne(entry, { session });
+        await (await col<RecordRevision>("recordRevisions")).insertOne(revision, {
+          session,
+        });
+        await this.insertAudit(context, "created", "care_entry", entry.id, session);
+        return toPlainData({
+          ...entry,
+          recordVersion: revision.hash,
+          writeDisposition: "created" as const,
+        });
+      });
+    } catch (error) {
+      const duplicateKey =
+        typeof error === "object" &&
+        error !== null &&
+        "code" in error &&
+        error.code === 11000;
+      if (!duplicateKey || !normalizedInput.templateItemId) throw error;
+      return this.agentMutation(context, async (session) => {
+        const concurrent = await findExistingRoutine(session);
+        if (!concurrent) throw error;
+        return concurrent;
+      });
+    }
   }
 
   async updateCareEntry(context: RequestContext, input: CareEntryUpdateInput) {
@@ -1678,6 +1770,12 @@ export class MongoParentingRepository implements ParentingRepository {
       input.recordType === "care_entry" ? "careEntries" : input.recordType === "appointment" ? "appointments" : "incidents";
     await this.transaction(async (session) => {
       await (await col<Record<string, unknown>>(collectionName)).deleteOne({ id: input.recordId, workspaceId: context.workspace.id }, { session });
+      if (input.recordType === "care_entry") {
+        await (await col<RoutineRecordSlot>("routineRecordSlots")).deleteMany(
+          { workspaceId: context.workspace.id, careEntryId: input.recordId },
+          { session },
+        );
+      }
       await (await col<RecordRevision>("recordRevisions")).deleteMany(
         { workspaceId: context.workspace.id, id: { $in: revisionIds } },
         { session },
