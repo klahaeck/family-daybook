@@ -4,12 +4,15 @@ import { GoogleAnalytics } from "@next/third-parties/google";
 
 import { AppProviders } from "@/components/providers/app-providers";
 import { AuthProvider } from "@/components/providers/auth-provider";
+import { getAppEnvironment } from "@/lib/deployment/environment";
 import { getSiteUrl } from "@/lib/metadata/site-url";
 import "./globals.css";
 
 const title = "Family Daybook";
 const description =
   "Family Daybook is a private family recordkeeping app for caregiving, appointments, factual notes, and an organized family timeline.";
+const appEnvironment = getAppEnvironment();
+const isProduction = appEnvironment === "production";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -48,7 +51,7 @@ export const metadata: Metadata = {
     title,
     description,
   },
-  robots: { index: true, follow: true },
+  robots: { index: isProduction, follow: isProduction },
 };
 
 export default function RootLayout({
@@ -63,11 +66,19 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <body className="flex min-h-full w-full min-w-0 flex-col">
+        {!isProduction ? (
+          <div
+            role="status"
+            className="bg-amber-300 px-3 py-1 text-center text-xs font-semibold uppercase tracking-wide text-amber-950"
+          >
+            Family Daybook {appEnvironment} environment
+          </div>
+        ) : null}
         <AuthProvider>
           <AppProviders>{children}</AppProviders>
         </AuthProvider>
       </body>
-      <GoogleAnalytics gaId="G-BV2C0Z5WTW" />
+      {isProduction ? <GoogleAnalytics gaId="G-BV2C0Z5WTW" /> : null}
     </html>
   );
 }

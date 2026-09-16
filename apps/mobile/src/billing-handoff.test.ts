@@ -24,8 +24,10 @@ describe("billing platform handoff", () => {
   });
 
   it("recognizes only the billing completion route", () => {
-    expect(isBillingCompletionUrl("https://www.myfamilydaybook.com/mobile/complete?intent=123")).toBe(true);
-    expect(isBillingCompletionUrl("https://www.myfamilydaybook.com/mobile/complete/extra")).toBe(false);
-    expect(isBillingCompletionUrl("familydaybook://unrelated")).toBe(false);
+    const origin = "https://stage.myfamilydaybook.com";
+    expect(isBillingCompletionUrl(`${origin}/mobile/complete?intent=123`, origin)).toBe(true);
+    expect(isBillingCompletionUrl(`${origin}/mobile/complete/extra`, origin)).toBe(false);
+    expect(isBillingCompletionUrl("https://www.myfamilydaybook.com/mobile/complete", origin)).toBe(false);
+    expect(isBillingCompletionUrl("familydaybook://unrelated", origin)).toBe(false);
   });
 });

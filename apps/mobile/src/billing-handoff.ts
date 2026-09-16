@@ -1,8 +1,12 @@
 export type BillingPlatform = "ios" | "android";
 
-export function isBillingCompletionUrl(url: string) {
+export function isBillingCompletionUrl(url: string, expectedOrigin: string) {
   try {
-    return new URL(url).pathname === "/mobile/complete";
+    const candidate = new URL(url);
+    return (
+      candidate.origin === new URL(expectedOrigin).origin &&
+      candidate.pathname === "/mobile/complete"
+    );
   } catch {
     return false;
   }

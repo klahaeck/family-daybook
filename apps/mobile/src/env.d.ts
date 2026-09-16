@@ -1,5 +1,7 @@
 declare namespace NodeJS {
   interface ProcessEnv {
+    APP_ENV?: "development" | "preview" | "staging" | "production" | "test";
+    EAS_BUILD_PROFILE?: string;
     EXPO_PUBLIC_API_ORIGIN: string;
     EXPO_PUBLIC_WEB_ORIGIN: string;
     EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY: string;

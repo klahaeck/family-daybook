@@ -3,6 +3,8 @@ import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { GET as capabilitiesGet } from "@/app/agent-capabilities.json/route";
+import { GET as appleAppSiteAssociationGet } from "@/app/.well-known/apple-app-site-association/route";
+import { GET as assetLinksGet } from "@/app/.well-known/assetlinks.json/route";
 import { GET as openAiChallengeGet } from "@/app/.well-known/openai-apps-challenge/route";
 import { GET as indexNowKeyGet } from "@/app/indexnow-key.txt/route";
 import { GET as llmsGet } from "@/app/llms.txt/route";
@@ -71,6 +73,7 @@ describe("public discovery surfaces", () => {
   });
 
   it("keeps sitemap and robots generated from the public contract", () => {
+    vi.stubEnv("APP_ENV", "production");
     vi.stubEnv("NEXT_PUBLIC_APP_URL", origin);
     const sitemapEntries = sitemap();
     expect(sitemapEntries.map((entry) => entry.url)).toEqual(
@@ -85,6 +88,35 @@ describe("public discovery surfaces", () => {
       disallow: expect.arrayContaining(["/app", "/api", "/.well-known/workflow/"]),
     });
     expect(JSON.stringify(rules.rules)).not.toContain('"/.well-known"');
+  });
+
+  it("blocks indexing outside production", () => {
+    vi.stubEnv("APP_ENV", "staging");
+    vi.stubEnv("NEXT_PUBLIC_APP_URL", "https://stage.myfamilydaybook.com");
+
+    expect(robots()).toEqual({ rules: { userAgent: "*", disallow: "/" } });
+    expect(sitemap()).toEqual([]);
+  });
+
+  it("publishes environment-specific native app associations", async () => {
+    vi.stubEnv("APP_ENV", "staging");
+    vi.stubEnv("APPLE_APP_TEAM_ID", "ABCDE12345");
+    vi.stubEnv(
+      "ANDROID_APP_SHA256_CERT_FINGERPRINTS",
+      Array.from({ length: 32 }, () => "AA").join(":"),
+    );
+
+    const appleResponse = appleAppSiteAssociationGet();
+    const androidResponse = assetLinksGet();
+
+    await expect(appleResponse.json()).resolves.toMatchObject({
+      applinks: {
+        details: [{ appIDs: ["ABCDE12345.com.myfamilydaybook.app.beta"] }],
+      },
+    });
+    await expect(androidResponse.json()).resolves.toMatchObject([
+      { target: { package_name: "com.myfamilydaybook.app.beta" } },
+    ]);
   });
 
   it("serves the IndexNow key only when valid", async () => {

@@ -5,20 +5,49 @@
   },
   "build": {
     "development": {
+      "environment": "development",
+      "env": {
+        "APP_ENV": "development"
+      },
       "developmentClient": true,
       "distribution": "internal",
       "channel": "development"
     },
     "preview": {
+      "environment": "preview",
+      "env": {
+        "APP_ENV": "staging"
+      },
       "distribution": "internal",
       "channel": "preview"
     },
+    "beta": {
+      "environment": "preview",
+      "env": {
+        "APP_ENV": "staging"
+      },
+      "distribution": "store",
+      "autoIncrement": true,
+      "channel": "beta"
+    },
     "production": {
+      "environment": "production",
+      "env": {
+        "APP_ENV": "production"
+      },
+      "distribution": "store",
       "autoIncrement": true,
       "channel": "production"
     }
   },
   "submit": {
+    "beta": {
+      "android": {
+        "track": "internal",
+        "releaseStatus": "completed"
+      },
+      "ios": {}
+    },
     "production": {}
   }
 }

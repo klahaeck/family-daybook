@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   CANONICAL_SITE_ORIGIN,
   getSiteUrl,
+  STAGING_SITE_ORIGIN,
 } from "@/lib/metadata/site-url";
 
 describe("getSiteUrl", () => {
@@ -22,6 +23,16 @@ describe("getSiteUrl", () => {
         NEXT_PUBLIC_APP_URL: " https://preview.example:8443 ",
       }).toString(),
     ).toBe("https://preview.example:8443/");
+  });
+
+  it("uses the Vercel branch URL for preview deployments", () => {
+    expect(
+      getSiteUrl({
+        APP_ENV: "preview",
+        NEXT_PUBLIC_APP_URL: CANONICAL_SITE_ORIGIN,
+        VERCEL_BRANCH_URL: "family-daybook-git-feature.example.vercel.app",
+      }).origin,
+    ).toBe("https://family-daybook-git-feature.example.vercel.app");
   });
 
   it.each([
@@ -53,5 +64,17 @@ describe("getSiteUrl", () => {
         NEXT_PUBLIC_APP_URL: CANONICAL_SITE_ORIGIN,
       }).origin,
     ).toBe(CANONICAL_SITE_ORIGIN);
+  });
+
+  it("requires the canonical staging origin in staging", () => {
+    expect(() =>
+      getSiteUrl({ APP_ENV: "staging", NEXT_PUBLIC_APP_URL: CANONICAL_SITE_ORIGIN }),
+    ).toThrow(STAGING_SITE_ORIGIN);
+    expect(
+      getSiteUrl({
+        APP_ENV: "staging",
+        NEXT_PUBLIC_APP_URL: STAGING_SITE_ORIGIN,
+      }).origin,
+    ).toBe(STAGING_SITE_ORIGIN);
   });
 });

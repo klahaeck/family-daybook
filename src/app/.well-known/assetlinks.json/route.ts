@@ -1,4 +1,5 @@
-const packageName = "com.myfamilydaybook.app";
+import { getMobileAppIdentifier } from "@/lib/deployment/environment";
+
 const fingerprintPattern = /^(?:[A-F0-9]{2}:){31}[A-F0-9]{2}$/;
 
 export const dynamic = "force-dynamic";
@@ -24,7 +25,7 @@ export function GET() {
         relation: ["delegate_permission/common.handle_all_urls"],
         target: {
           namespace: "android_app",
-          package_name: packageName,
+          package_name: getMobileAppIdentifier(),
           sha256_cert_fingerprints: fingerprints,
         },
       },

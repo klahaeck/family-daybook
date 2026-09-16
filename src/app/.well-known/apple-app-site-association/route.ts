@@ -1,4 +1,4 @@
-const bundleIdentifier = "com.myfamilydaybook.app";
+import { getMobileAppIdentifier } from "@/lib/deployment/environment";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +17,7 @@ export function GET() {
         apps: [],
         details: [
           {
-            appIDs: [`${teamId}.${bundleIdentifier}`],
+            appIDs: [`${teamId}.${getMobileAppIdentifier()}`],
             components: [{ "/": "/mobile/complete", comment: "Mobile checkout completion" }],
           },
         ],

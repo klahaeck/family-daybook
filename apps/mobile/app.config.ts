@@ -1,40 +1,53 @@
 import type { ExpoConfig } from "expo/config";
 
-const bundleIdentifier = "com.myfamilydaybook.app";
-const webOrigin = process.env.EXPO_PUBLIC_WEB_ORIGIN ?? "https://www.myfamilydaybook.com";
+import { resolveMobileAppConfiguration } from "./src/app-environment.ts";
+
+const deployment = resolveMobileAppConfiguration(process.env);
 const appleTeamId = process.env.APPLE_APP_TEAM_ID?.trim() || undefined;
+const appLinkHost = new URL(deployment.webOrigin).hostname;
+const appLinksEnabled = Boolean(appleTeamId) && deployment.webOrigin.startsWith("https://");
 
 const config: ExpoConfig = {
-  name: "Family Daybook",
+  name: deployment.name,
   slug: "family-daybook",
   version: "1.0.0",
-  scheme: "familydaybook",
+  scheme: deployment.scheme,
   orientation: "portrait",
   userInterfaceStyle: "automatic",
   newArchEnabled: true,
   runtimeVersion: { policy: "appVersion" },
   ios: {
-    bundleIdentifier,
+    bundleIdentifier: deployment.bundleIdentifier,
     supportsTablet: true,
-    ...(appleTeamId
+    ...(appLinksEnabled
       ? {
           appleTeamId,
-          associatedDomains: ["applinks:www.myfamilydaybook.com"],
+          associatedDomains: [`applinks:${appLinkHost}`],
         }
       : {}),
     config: { usesNonExemptEncryption: false },
   },
   android: {
-    package: bundleIdentifier,
+    package: deployment.bundleIdentifier,
     adaptiveIcon: { backgroundColor: "#F3F0E8" },
-    intentFilters: [
-      {
-        action: "VIEW",
-        autoVerify: true,
-        data: [{ scheme: "https", host: "www.myfamilydaybook.com", pathPrefix: "/mobile/complete" }],
-        category: ["BROWSABLE", "DEFAULT"],
-      },
-    ],
+    ...(deployment.webOrigin.startsWith("https://")
+      ? {
+          intentFilters: [
+            {
+              action: "VIEW",
+              autoVerify: true,
+              data: [
+                {
+                  scheme: "https",
+                  host: appLinkHost,
+                  pathPrefix: "/mobile/complete",
+                },
+              ],
+              category: ["BROWSABLE", "DEFAULT"],
+            },
+          ],
+        }
+      : {}),
   },
   plugins: [
     "expo-router",
@@ -43,7 +56,9 @@ const config: ExpoConfig = {
   ],
   experiments: { reactCompiler: true },
   extra: {
-    webOrigin,
+    appEnvironment: deployment.environment,
+    apiOrigin: deployment.apiOrigin,
+    webOrigin: deployment.webOrigin,
     eas: { projectId: process.env.EXPO_PUBLIC_EAS_PROJECT_ID },
   },
 };

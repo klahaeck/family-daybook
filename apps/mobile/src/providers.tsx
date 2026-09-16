@@ -6,10 +6,13 @@ import * as Crypto from "expo-crypto";
 import { createContext, useContext, useEffect, useMemo, useState, type PropsWithChildren } from "react";
 import { AppState, type AppStateStatus } from "react-native";
 
+import { getMobileRuntimeConfiguration } from "@/runtime-config";
+
 const ApiContext = createContext<DaybookApiClient | null>(null);
 
 export function AppProviders({ children }: PropsWithChildren) {
   const { getToken } = useAuth({ treatPendingAsSignedOut: false });
+  const { apiOrigin } = getMobileRuntimeConfiguration();
   const [queryClient] = useState(() => new QueryClient({
     defaultOptions: {
       queries: { staleTime: 30_000, gcTime: 5 * 60_000, retry: 1, refetchOnReconnect: true },
@@ -17,8 +20,8 @@ export function AppProviders({ children }: PropsWithChildren) {
     },
   }));
   const api = useMemo(
-    () => new DaybookApiClient(process.env.EXPO_PUBLIC_API_ORIGIN, getToken, Crypto.randomUUID),
-    [getToken],
+    () => new DaybookApiClient(apiOrigin, getToken, Crypto.randomUUID),
+    [apiOrigin, getToken],
   );
 
   useEffect(() => onlineManager.setEventListener((setOnline) => NetInfo.addEventListener((state) => setOnline(Boolean(state.isConnected)))), []);

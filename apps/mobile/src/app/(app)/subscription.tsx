@@ -8,6 +8,7 @@ import { Platform, Text } from "react-native";
 import { ActionButton, Body, Card, Heading, InlineNotice, Screen, ScreenState } from "@/components/ui";
 import { useAppTheme } from "@/mobile-theme";
 import { useApi, useDaybookSession } from "@/providers";
+import { getMobileRuntimeConfiguration } from "@/runtime-config";
 import { friendlyError } from "@/utils";
 import { getGoogleExternalTransactionToken, launchGoogleExternalLink } from "@/native/external-links";
 import { billingLinkInputForPlatform, isBillingCompletionUrl, launchCheckoutForPlatform } from "@/billing-handoff";
@@ -17,6 +18,7 @@ export default function SubscriptionScreen() {
   const api = useApi();
   const clerk = useClerk();
   const queryClient = useQueryClient();
+  const { webOrigin } = getMobileRuntimeConfiguration();
   const session = useDaybookSession();
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const billing = useQuery({
@@ -31,13 +33,13 @@ export default function SubscriptionScreen() {
   useEffect(() => stopPolling, []);
   useEffect(() => {
     const subscription = Linking.addEventListener("url", ({ url }) => {
-      if (!isBillingCompletionUrl(url)) return;
+      if (!isBillingCompletionUrl(url, webOrigin)) return;
       stopPolling();
       if (Platform.OS === "ios") void WebBrowser.dismissBrowser().catch(() => undefined);
       void queryClient.invalidateQueries({ queryKey: ["session"] });
     });
     return () => subscription.remove();
-  }, [queryClient]);
+  }, [queryClient, webOrigin]);
   const checkout = useMutation({ mutationFn: async () => {
     const platform = Platform.OS === "android" ? "android" : "ios";
     const input = await billingLinkInputForPlatform(platform, getGoogleExternalTransactionToken);

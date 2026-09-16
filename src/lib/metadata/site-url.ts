@@ -1,8 +1,15 @@
-export const CANONICAL_SITE_ORIGIN = "https://www.myfamilydaybook.com";
+import {
+  getAppEnvironment,
+  type AppEnvironmentVariables,
+} from "@/lib/deployment/environment";
 
-interface SiteUrlEnvironment {
+export const CANONICAL_SITE_ORIGIN = "https://www.myfamilydaybook.com";
+export const STAGING_SITE_ORIGIN = "https://stage.myfamilydaybook.com";
+
+interface SiteUrlEnvironment extends AppEnvironmentVariables {
   NEXT_PUBLIC_APP_URL?: string;
-  NODE_ENV?: string;
+  VERCEL_BRANCH_URL?: string;
+  VERCEL_URL?: string;
 }
 
 function invalidSiteUrl(message: string): never {
@@ -12,12 +19,23 @@ function invalidSiteUrl(message: string): never {
 export function getSiteUrl(
   environment: SiteUrlEnvironment = process.env,
 ): URL {
-  const configured = environment.NEXT_PUBLIC_APP_URL?.trim();
+  const appEnvironment = getAppEnvironment(environment);
+  const vercelPreviewHost =
+    environment.VERCEL_BRANCH_URL?.trim() || environment.VERCEL_URL?.trim();
+  const configured =
+    appEnvironment === "preview" && vercelPreviewHost
+      ? `https://${vercelPreviewHost}`
+      : environment.NEXT_PUBLIC_APP_URL?.trim();
 
   if (!configured) {
-    if (environment.NODE_ENV === "production") {
+    if (appEnvironment === "production") {
       return invalidSiteUrl(
         `NEXT_PUBLIC_APP_URL must be set to ${CANONICAL_SITE_ORIGIN} in production.`,
+      );
+    }
+    if (appEnvironment === "staging") {
+      return invalidSiteUrl(
+        `NEXT_PUBLIC_APP_URL must be set to ${STAGING_SITE_ORIGIN} in staging.`,
       );
     }
     return new URL("http://localhost:3000");
@@ -41,9 +59,14 @@ export function getSiteUrl(
       "NEXT_PUBLIC_APP_URL must contain only an origin, without a path, query, or fragment.",
     );
   }
-  if (environment.NODE_ENV === "production" && url.origin !== CANONICAL_SITE_ORIGIN) {
+  if (appEnvironment === "production" && url.origin !== CANONICAL_SITE_ORIGIN) {
     return invalidSiteUrl(
       `Production must use the canonical origin ${CANONICAL_SITE_ORIGIN}.`,
+    );
+  }
+  if (appEnvironment === "staging" && url.origin !== STAGING_SITE_ORIGIN) {
+    return invalidSiteUrl(
+      `Staging must use the canonical origin ${STAGING_SITE_ORIGIN}.`,
     );
   }
 

@@ -1,8 +1,13 @@
 import type { MetadataRoute } from "next";
 
+import { isProductionEnvironment } from "@/lib/deployment/environment";
 import { getSiteUrl } from "@/lib/metadata/site-url";
 
 export default function robots(): MetadataRoute.Robots {
+  if (!isProductionEnvironment()) {
+    return { rules: { userAgent: "*", disallow: "/" } };
+  }
+
   const siteUrl = getSiteUrl();
 
   return {

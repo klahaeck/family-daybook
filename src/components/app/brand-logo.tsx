@@ -10,13 +10,23 @@ export function BrandLogo({
   decorative?: boolean;
 }) {
   return (
-    <Image
-      src="/family-daybook-logo.svg"
-      alt={decorative ? "" : "Family Daybook"}
-      aria-hidden={decorative || undefined}
-      width={760}
-      height={180}
-      className={cn("h-auto dark:brightness-200 dark:saturate-150", className)}
-    />
+    <>
+      <Image
+        src="/family-daybook-logo.svg"
+        alt={decorative ? "" : "Family Daybook"}
+        aria-hidden={decorative || undefined}
+        width={760}
+        height={180}
+        className={cn("h-auto dark:hidden", className)}
+      />
+      <Image
+        src="/family-daybook-logo-dark.svg"
+        alt={decorative ? "" : "Family Daybook"}
+        aria-hidden={decorative || undefined}
+        width={760}
+        height={180}
+        className={cn("hidden h-auto dark:block", className)}
+      />
+    </>
   );
 }

@@ -171,7 +171,7 @@ export default async function MarketingHome() {
         <AgentAccessFeature />
 
         <section id="security" className="scroll-mt-32 px-4 py-20 sm:px-6 sm:py-28 lg:px-8">
-          <div className="mx-auto max-w-7xl overflow-hidden rounded-[2.25rem] bg-primary text-primary-foreground shadow-[0_28px_80px_rgba(23,72,60,0.18)]">
+          <div className="mx-auto max-w-7xl overflow-hidden rounded-[2.25rem] bg-[var(--security-surface)] text-primary-foreground shadow-[0_28px_80px_rgba(23,72,60,0.18)]">
             <div className="grid gap-12 px-6 py-10 sm:px-10 sm:py-14 lg:grid-cols-[0.78fr_1.22fr] lg:px-14 lg:py-16">
               <div>
                 <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-semibold">

@@ -58,13 +58,24 @@ Copy `.env.example` to `.env.local` for development. Configure the same values i
 1. Create a dedicated MongoDB Atlas database and least-privilege application user.
 2. Create a Clerk application, enable self-service registration, and make MFA available to every owner and reviewer.
 3. Create a Vercel Private Blob store.
-4. Set `NEXT_PUBLIC_APP_URL` to `https://www.myfamilydaybook.com`; production builds reject any other canonical origin. Keep the apex-to-`www` redirect enabled.
+4. Set `APP_ENV=production` and `NEXT_PUBLIC_APP_URL=https://www.myfamilydaybook.com`; production builds reject any other canonical origin. Keep the apex-to-`www` redirect enabled.
 5. Configure Resend and Cloudflare Turnstile for the private `/support` form.
 6. Deploy to Vercel. Workflow SDK routes are generated during the Next.js build.
 7. Sign in with each owner account. Its first login bootstraps a separate private workspace and initial routine template. A user matching a pending reviewer invitation joins that workspace as a read-only reviewer instead.
 8. Replace placeholder child and caregiver names in Settings before entering real records.
 
 Vercel Workflows use the deployment’s managed workflow backend automatically. Private Blob supports either the legacy read/write token or Vercel OIDC plus a store ID.
+
+## Deployment environments
+
+`APP_ENV` is the application deployment environment and is deliberately separate from `NODE_ENV`, which Next.js sets to `production` for every deployed build.
+
+- `development` uses local origins and the `com.myfamilydaybook.app.dev` native identifier.
+- `preview` derives its site origin from Vercel's branch or deployment URL and blocks search indexing.
+- `staging` requires `https://stage.myfamilydaybook.com`, blocks search indexing and production analytics, and uses `com.myfamilydaybook.app.beta`.
+- `production` requires `https://www.myfamilydaybook.com` and uses `com.myfamilydaybook.app`.
+
+Configure separate Clerk, MongoDB, Blob, billing webhook, and signing values for staging and production. Never point a preview or staging deployment at the production database. The EAS `preview` and `beta` profiles use the staging application environment; the `production` profile uses production.
 
 ## Data integrity model
 

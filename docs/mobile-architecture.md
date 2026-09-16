@@ -1,6 +1,6 @@
 # Native mobile architecture
 
-Family Daybook ships one Expo/React Native codebase for iOS and Android. The existing Next.js application remains the system of record and exposes a Clerk-authenticated `/api/v1` surface. Mobile does not call the MCP transport.
+Family Daybook ships one Expo/React Native codebase for iOS and Android. The existing Next.js application remains the system of record and exposes a Clerk-authenticated `/api/v1` surface. Mobile does not call the MCP transport. Development, staging/beta, and production builds use distinct native identifiers and validated origins so they can coexist without crossing data environments.
 
 ## Boundaries
 
@@ -14,7 +14,7 @@ Mobile mutation attribution is transport-neutral: every request carries a UUID `
 
 ## Authentication and billing
 
-Enable Clerk Native API and register `com.myfamilydaybook.app` for both platforms. The app's non-dismissible Clerk `AuthView` supports sign-in and signup, and Clerk stores session tokens through Expo SecureStore. API authorization is derived only from the verified Clerk bearer token and server-side workspace membership; clients cannot choose a workspace or operation client key.
+Enable Clerk Native API and register the identifier for each isolated application instance: `com.myfamilydaybook.app.dev`, `com.myfamilydaybook.app.beta`, or `com.myfamilydaybook.app`. The app's non-dismissible Clerk `AuthView` supports sign-in and signup, and Clerk stores session tokens through Expo SecureStore. API authorization is derived only from the verified Clerk bearer token and server-side workspace membership; clients cannot choose a workspace or operation client key.
 
 The session endpoint returns server-authoritative billing state and role capabilities. Clerk's native Billing object is used only for plan and statement reads. Checkout follows this sequence:
 

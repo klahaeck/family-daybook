@@ -4,8 +4,8 @@ import { getSiteUrl } from "../src/lib/metadata/site-url";
 const keyPattern = /^[A-Za-z0-9-]{8,128}$/;
 const submit = process.argv.includes("--submit");
 const siteUrl = getSiteUrl({
+  APP_ENV: "production",
   NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
-  NODE_ENV: "production",
 });
 const key = process.env.INDEXNOW_KEY?.trim();
 

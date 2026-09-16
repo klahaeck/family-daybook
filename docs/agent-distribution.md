@@ -4,7 +4,7 @@ These are post-deployment operations. They intentionally do not run during build
 
 ## 1. Production verification
 
-Set `NEXT_PUBLIC_APP_URL=https://www.myfamilydaybook.com` for production and preview deployments. Confirm:
+Set `APP_ENV=production` and `NEXT_PUBLIC_APP_URL=https://www.myfamilydaybook.com` only for the production deployment. Preview and staging deployments are intentionally excluded from indexing. Confirm:
 
 ```sh
 curl -I https://myfamilydaybook.com/agent-access
@@ -30,13 +30,13 @@ Configure the support variables and complete one support-form delivery test. Con
 5. Configure `INDEXNOW_KEY`, verify `/indexnow-key.txt`, and preview the URL submission:
 
    ```sh
-   NEXT_PUBLIC_APP_URL=https://www.myfamilydaybook.com INDEXNOW_KEY=REPLACE_ME npm run search:notify
+   APP_ENV=production NEXT_PUBLIC_APP_URL=https://www.myfamilydaybook.com INDEXNOW_KEY=REPLACE_ME npm run search:notify
    ```
 
 6. After reviewing the dry run, send it explicitly:
 
    ```sh
-   NEXT_PUBLIC_APP_URL=https://www.myfamilydaybook.com INDEXNOW_KEY=REPLACE_ME npm run search:notify -- --submit
+   APP_ENV=production NEXT_PUBLIC_APP_URL=https://www.myfamilydaybook.com INDEXNOW_KEY=REPLACE_ME npm run search:notify -- --submit
    ```
 
 Do not automate indexing submissions from a build. Use them after a verified deployment or meaningful public-content update.
