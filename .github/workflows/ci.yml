@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+      - staging
+  push:
+    branches:
+      - main
+      - staging
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      CI: "true"
+      APP_ENV: test
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22.x"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Run web tests
+        run: npm test
+
+      - name: Run mobile tests
+        run: npm run mobile:test
+
+      - name: Check Expo configuration
+        run: npm run mobile:doctor
+
+      - name: Build web application
+        run: npm run build
