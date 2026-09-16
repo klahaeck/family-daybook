@@ -19,7 +19,7 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "npm run typecheck:web && npm run typecheck:contracts && npm run typecheck:api-client && npm run typecheck:mobile",
-    "typecheck:web": "tsc --noEmit",
+    "typecheck:web": "next typegen && tsc --noEmit",
     "typecheck:contracts": "tsc -p packages/contracts/tsconfig.json --noEmit",
     "typecheck:api-client": "tsc -p packages/api-client/tsconfig.json --noEmit",
     "typecheck:mobile": "tsc -p apps/mobile/tsconfig.json --noEmit",
