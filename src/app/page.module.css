@@ -1,0 +1,7 @@
+.securityPanel {
+  background-color: #2b4d3e;
+}
+
+:global(.dark) .securityPanel {
+  background-color: #85a490;
+}
