@@ -770,7 +770,7 @@ test("adds a record to the previous day without labeling it as a late entry", as
   await expect(page).toHaveURL(new RegExp(`date=${previous}`));
   await expect(page.getByRole("textbox", { name: "Log date", exact: true })).toHaveValue(previous);
   await expect(page.getByText("Historical day", { exact: true })).toBeVisible();
-  await expect(page.getByText(/following calendar day/i)).toBeVisible();
+  await expect(page.getByText(/next two calendar days/i)).toBeVisible();
 
   await page.getByRole("button", { name: "Add record" }).click();
   await page.getByLabel("Activity").fill(label);

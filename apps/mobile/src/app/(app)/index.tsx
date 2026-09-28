@@ -127,7 +127,7 @@ export default function TodayScreen() {
         {historical ? <ActionButton compact label="Return to today" secondary onPress={() => navigateToDate(today)} /> : <Body muted>Select an earlier date to add a contemporaneously labeled past entry.</Body>}
       </Card>
 
-      {historical ? <InlineNotice>Records added after the following calendar day retain a visible late-entry label.</InlineNotice> : null}
+      {historical ? <InlineNotice>Records added more than two calendar days later retain a visible late-entry label.</InlineNotice> : null}
       <ScreenState loading={day.isPending} error={day.error} onRetry={() => void day.refetch()} />
 
       {day.data ? <>
