@@ -1,5 +1,7 @@
 import { format, formatDistanceToNowStrict, isValid, parseISO } from "date-fns";
 
+export const LATE_ENTRY_GRACE_DAYS = 2;
+
 export function localDateInTimezone(
   date = new Date(),
   timezone = "America/Chicago",
@@ -145,5 +147,5 @@ export function lateEntryFor(
 ): boolean {
   const occurredDate = localDateInTimezone(new Date(occurredAt), timezone);
   const recordedDate = localDateInTimezone(new Date(recordedAt), timezone);
-  return shiftLocalDate(occurredDate, 1) < recordedDate;
+  return shiftLocalDate(occurredDate, LATE_ENTRY_GRACE_DAYS) < recordedDate;
 }

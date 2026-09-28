@@ -1010,7 +1010,7 @@ describe("memory repository integration", () => {
       ))?.record,
     ).toMatchObject({ lateEntry: false });
 
-    const olderDate = shiftLocalDate(today, -2);
+    const olderDate = shiftLocalDate(today, -3);
     const older = await repository.getDashboard(context, olderDate);
     const olderEntry = await repository.createCareEntry(context, {
       localDate: olderDate,

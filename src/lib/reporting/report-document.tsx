@@ -143,7 +143,7 @@ export function ReportDocument({ source }: { source: ReportSource }) {
                 )}
                 {entry.durationMinutes && <Text>Duration: {entry.durationMinutes} minutes</Text>}
                 {entry.notes && <Text>Notes: {entry.notes}</Text>}
-                {entry.lateEntry && <Text>Late entry: recorded after the following calendar day.</Text>}
+                {entry.lateEntry && <Text>Late entry: recorded more than two calendar days after it occurred.</Text>}
               </View>
             ))}
           </View>

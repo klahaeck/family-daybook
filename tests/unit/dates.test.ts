@@ -16,18 +16,18 @@ describe("date handling", () => {
     expect(localDateInTimezone(instant, "America/Chicago")).toBe("2026-07-14");
   });
 
-  it("allows the following workspace calendar day before marking an entry late", () => {
+  it("allows two following workspace calendar days before marking an entry late", () => {
     expect(
       lateEntryFor(
         "2026-07-10T05:01:00.000Z",
-        "2026-07-12T04:59:00.000Z",
+        "2026-07-13T04:59:00.000Z",
         "America/Chicago",
       ),
     ).toBe(false);
     expect(
       lateEntryFor(
         "2026-07-10T05:01:00.000Z",
-        "2026-07-12T05:01:00.000Z",
+        "2026-07-13T05:01:00.000Z",
         "America/Chicago",
       ),
     ).toBe(true);

@@ -197,7 +197,7 @@ export function TodayDashboard({ date, today, initialData }: { date: string; tod
         <div className="flex gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-950 dark:border-amber-900 dark:bg-amber-950/50 dark:text-amber-100">
           <Clock3 className="mt-0.5 size-4 shrink-0" />
           <p className="text-sm leading-6">
-            Records added by the end of the following calendar day are not labeled late. Later records retain separate occurrence and server-controlled entry times.
+            Records added within the next two calendar days are not labeled late. Later records retain separate occurrence and server-controlled entry times.
           </p>
         </div>
       )}
