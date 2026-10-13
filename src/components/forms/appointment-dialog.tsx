@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { CalendarPlus, Check, Clock3 } from "lucide-react";
 
 import { createAppointmentAction } from "@/app/actions";
@@ -12,20 +11,31 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toDateTimeLocal } from "@/lib/domain/dates";
 import type { Caregiver, Child } from "@/lib/domain/types";
-import { AttachmentPicker, FieldError, MultiCheck, uploadFiles } from "./form-parts";
+import { appointmentSchema, type AppointmentInput } from "@/lib/domain/schemas";
+import { appointmentPreview, pendingIdentity } from "@/lib/record-previews";
+import { useRecordSave } from "./use-record-save";
+import { AttachmentPicker, FieldError, MultiCheck } from "./form-parts";
 
 export function AppointmentDialog({ childOptions, caregivers }: { childOptions: Child[]; caregivers: Caregiver[] }) {
-  const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [childIds, setChildIds] = useState<string[]>([childOptions[0]?.id].filter(Boolean));
   const [caregiverIds, setCaregiverIds] = useState<string[]>([caregivers.find((item) => item.isOwner)?.id ?? caregivers[0]?.id].filter(Boolean));
   const [status, setStatus] = useState("scheduled");
   const [files, setFiles] = useState<File[]>([]);
   const [error, setError] = useState<string>();
-  const mutation = useMutation({
-    mutationFn: async (formData: FormData) => {
-      setError(undefined);
-      const result = await createAppointmentAction({
+  const mutation = useRecordSave({
+    recordType: "appointment", queryKeys: [["appointments"], ["timeline"]], files, setFiles, setOpen,
+    preview: (input: AppointmentInput) => appointmentPreview({ ...pendingIdentity(), ...input }),
+    save: async (input: AppointmentInput) => {
+      const result = await createAppointmentAction(input);
+      if (!result.ok || !result.data) throw new Error(result.error ?? "Unable to save appointment");
+      return { id: result.data.id, confirmed: result.data.record ? appointmentPreview(result.data.record) : [] };
+    },
+  });
+  const submit = (formData: FormData) => {
+    setError(undefined);
+    try {
+      mutation.mutate(appointmentSchema.parse({
         childIds,
         title: formData.get("title")?.toString(),
         provider: formData.get("provider")?.toString() || undefined,
@@ -38,26 +48,15 @@ export function AppointmentDialog({ childOptions, caregivers }: { childOptions: 
           : undefined,
         cancellationDetails: formData.get("cancellationDetails")?.toString() || undefined,
         notes: formData.get("notes")?.toString() || undefined,
-      });
-      if (!result.ok || !result.data) throw new Error(result.error ?? "Unable to save appointment");
-      await uploadFiles(files, "appointment", result.data.id);
-    },
-    onSuccess: async () => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["appointments"] }),
-        queryClient.invalidateQueries({ queryKey: ["timeline"] }),
-      ]);
-      setOpen(false);
-      setFiles([]);
-    },
-    onError: (cause) => setError(cause.message),
-  });
+      }));
+    } catch { setError("Check the appointment details and try again."); }
+  };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button />}><CalendarPlus className="size-4" /> Add appointment</DialogTrigger>
-      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-2xl">
-        <form action={(data) => mutation.mutate(data)}>
+    <Dialog open={open} onOpenChange={(next) => { if (!mutation.isPending) setOpen(next); }}>
+      <DialogTrigger render={<Button disabled={mutation.isPending} />}><CalendarPlus className="size-4" /> Add appointment</DialogTrigger>
+      <DialogContent keepMounted={mutation.preserveDraft} className="max-h-[92vh] overflow-y-auto sm:max-w-2xl">
+        <form onSubmit={(event) => { event.preventDefault(); if (!mutation.isPending) submit(new FormData(event.currentTarget)); }}>
           <DialogHeader>
             <DialogTitle>Track an appointment</DialogTitle>
             <DialogDescription>Record the scheduled details and the factual attendance outcome.</DialogDescription>
@@ -87,9 +86,9 @@ export function AppointmentDialog({ childOptions, caregivers }: { childOptions: 
             )}
             <div className="space-y-2"><Label htmlFor="notes">Factual notes (optional)</Label><Textarea id="notes" name="notes" rows={4} maxLength={2000} placeholder="Record notification source, time, and observable details." /></div>
             <AttachmentPicker files={files} onChange={setFiles} />
-            {error && <FieldError errors={[error]} />}
+            {(error || mutation.errorMessage) && <FieldError errors={[error ?? mutation.errorMessage!]} />}
           </div>
-          <DialogFooter><Button type="submit" disabled={mutation.isPending || childIds.length === 0 || caregiverIds.length === 0}>{mutation.isPending ? <Clock3 className="size-4 animate-spin" /> : <Check className="size-4" />}{mutation.isPending ? "Saving…" : "Save appointment"}</Button></DialogFooter>
+          <DialogFooter><Button type="submit" disabled={mutation.isPending || childIds.length === 0 || caregiverIds.length === 0}>{mutation.isPending ? <Clock3 className="size-4 animate-spin" /> : <Check className="size-4" />}{mutation.isPending ? "Saving…" : mutation.retryingFiles ? "Retry supporting files" : "Save appointment"}</Button></DialogFooter>
         </form>
       </DialogContent>
     </Dialog>

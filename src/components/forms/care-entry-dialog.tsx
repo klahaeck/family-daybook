@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Check, Clock3, Plus } from "lucide-react";
 
 import { correctCareEntryAction, createCareEntryAction, updateCareEntryAction } from "@/app/actions";
@@ -21,7 +20,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { careStatusRecordsProvidedCare } from "@/lib/domain/care-entry-rules";
 import { localDateTimeToUtc, toDateTimeLocalInTimezone } from "@/lib/domain/dates";
 import type { Caregiver, CareStatus, Child, TodayTask } from "@/lib/domain/types";
-import { AttachmentPicker, FieldError, MultiCheck, uploadFiles } from "./form-parts";
+import { careEntrySchema, type CareEntryInput } from "@/lib/domain/schemas";
+import { carePreview, pendingIdentity } from "@/lib/record-previews";
+import { useRecordSave } from "./use-record-save";
+import { AttachmentPicker, FieldError, MultiCheck } from "./form-parts";
 
 export function CareEntryDialog({
   task,
@@ -42,7 +44,6 @@ export function CareEntryDialog({
   finalized?: boolean;
   trigger?: React.ReactElement;
 }) {
-  const queryClient = useQueryClient();
   const editing = Boolean(task?.entry);
   const correcting = editing && finalized;
   const initialStatus = task?.entry?.status ?? "completed";
@@ -67,67 +68,60 @@ export function CareEntryDialog({
       ? toDateTimeLocalInTimezone(new Date(), timezone)
       : `${date}T${task?.suggestedTime ?? "12:00"}`;
 
-  const mutation = useMutation({
-    mutationFn: async (formData: FormData) => {
-      setServerError(undefined);
-      const details = {
-        childIds: selectedChildren,
-        caregiverIds: recordsProvidedCare ? selectedCaregivers : [],
-        status,
-        occurredAt: localDateTimeToUtc(formData.get("occurredAt")!.toString(), timezone),
-        durationMinutes: recordsProvidedCare && formData.get("durationMinutes")?.toString()
-          ? Number(formData.get("durationMinutes"))
-          : undefined,
-        activityType: recordsProvidedCare
-          ? formData.get("activityType")?.toString() || undefined
-          : undefined,
-        notes: formData.get("notes")?.toString() || undefined,
-      };
+  const mutation = useRecordSave({
+    recordType: "care_entry",
+    queryKeys: [["dashboard", date], ["timeline"]],
+    files, setFiles, setOpen,
+    preview: (input: CareEntryInput & { reason?: string }) => carePreview({
+      ...pendingIdentity(), dailyLogId: "", lateEntry: false, ...task?.entry, ...input,
+    }, date, task?.id, finalized ? "finalized" : "open"),
+    save: async (input: CareEntryInput & { reason?: string }) => {
       const result = task?.entry
         ? correcting
-          ? await correctCareEntryAction({
-              recordId: task.entry.id,
-              ...details,
-              reason: formData.get("reason")?.toString(),
-            })
-          : await updateCareEntryAction({
-            recordId: task.entry.id,
-            ...details,
-          })
-        : await createCareEntryAction({
-            localDate: date,
-            templateItemId: task?.templateItemId,
-            arrangementTaskId: task?.arrangementTaskId,
-            taskKey: task?.taskKey ?? "custom",
-            taskLabel: task?.label ?? formData.get("taskLabel")?.toString(),
-            ...details,
-          });
+          ? await correctCareEntryAction({ ...input, recordId: task.entry.id })
+          : await updateCareEntryAction({ ...input, recordId: task.entry.id })
+        : await createCareEntryAction(input);
       if (!result.ok || !result.data) throw new Error(result.error ?? "Unable to save record");
-      const recordId = task?.entry?.id ?? ("id" in result.data ? result.data.id : undefined);
-      if (!recordId) throw new Error("Unable to identify the saved record");
-      await uploadFiles(files, "care_entry", recordId);
-      return { id: recordId };
+      const id = task?.entry?.id ?? ("id" in result.data ? result.data.id : undefined);
+      if (!id) throw new Error("Unable to identify the saved record");
+      return { id, confirmed: "record" in result.data ? carePreview(result.data.record, date, task?.id, finalized ? "finalized" : "open") : [] };
     },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["dashboard", date] });
-      await queryClient.invalidateQueries({ queryKey: ["timeline"] });
-      setOpen(false);
-      setFiles([]);
-    },
-    onError: (error) => setServerError(error.message),
   });
+  const submit = (formData: FormData) => {
+    setServerError(undefined);
+    try {
+      const input = careEntrySchema.parse({
+        localDate: date, templateItemId: task?.templateItemId, arrangementTaskId: task?.arrangementTaskId,
+        taskKey: task?.taskKey ?? "custom", taskLabel: task?.label ?? formData.get("taskLabel")?.toString(),
+        childIds: selectedChildren, caregiverIds: recordsProvidedCare ? selectedCaregivers : [], status,
+        occurredAt: localDateTimeToUtc(formData.get("occurredAt")!.toString(), timezone),
+        durationMinutes: recordsProvidedCare && formData.get("durationMinutes")?.toString() ? Number(formData.get("durationMinutes")) : undefined,
+        activityType: recordsProvidedCare ? formData.get("activityType")?.toString() || undefined : undefined,
+        notes: formData.get("notes")?.toString() || undefined,
+      });
+      mutation.mutate({ ...input, reason: formData.get("reason")?.toString() });
+    } catch { setServerError("Check the record details and try again."); }
+  };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={(next) => {
+      if (mutation.isPending) return;
+      if (next && task && !mutation.preserveDraft) {
+        setStatus(initialStatus);
+        setSelectedChildren(task.entry?.childIds ?? task.childIds);
+        setSelectedCaregivers(careStatusRecordsProvidedCare(initialStatus) ? task.entry?.caregiverIds ?? task.plannedCaregiverIds : []);
+      }
+      setOpen(next);
+    }}>
       {trigger ? (
         <DialogTrigger render={trigger} />
       ) : (
-        <DialogTrigger render={<Button size="sm" />}>
+        <DialogTrigger render={<Button size="sm" disabled={mutation.isPending} />}>
           <Plus className="size-4" /> Add record
         </DialogTrigger>
       )}
-      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-xl">
-        <form action={(data) => mutation.mutate(data)}>
+      <DialogContent keepMounted={mutation.preserveDraft} className="max-h-[92vh] overflow-y-auto sm:max-w-xl">
+        <form onSubmit={(event) => { event.preventDefault(); if (!mutation.isPending) submit(new FormData(event.currentTarget)); }}>
           <DialogHeader>
             <DialogTitle>{editing ? `Change ${task?.label}` : task?.label ?? "Add caregiving record"}</DialogTitle>
             <DialogDescription>
@@ -236,7 +230,7 @@ export function CareEntryDialog({
               </div>
             )}
             <AttachmentPicker files={files} onChange={setFiles} />
-            {serverError && <FieldError errors={[serverError]} />}
+            {(serverError || mutation.errorMessage) && <FieldError errors={[serverError ?? mutation.errorMessage!]} />}
           </div>
           <DialogFooter>
             <Button
@@ -248,7 +242,7 @@ export function CareEntryDialog({
               }
             >
               {mutation.isPending ? <Clock3 className="size-4 animate-spin" /> : <Check className="size-4" />}
-              {mutation.isPending ? "Saving…" : correcting ? "Save correction" : editing ? "Save changes" : "Save record"}
+              {mutation.isPending ? "Saving…" : mutation.retryingFiles ? "Retry supporting files" : correcting ? "Save correction" : editing ? "Save changes" : "Save record"}
             </Button>
           </DialogFooter>
         </form>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useRecordPreview, isRecordSaving } from "@family-daybook/api-client/record-saving";
 import { useQuery } from "@tanstack/react-query";
 import { BarChart3, CalendarDays, CalendarRange, Clock3, Download, Filter, HeartHandshake, List, ShieldAlert } from "lucide-react";
 
@@ -35,7 +36,8 @@ const kindFilters = [
 ];
 
 export function TimelineView({ initialData, canManage = false, canPurge = false }: { initialData: TimelineData; canManage?: boolean; canPurge?: boolean }) {
-  const { data } = useQuery({ queryKey: ["timeline"], queryFn: fetchTimeline, initialData });
+  const { data: confirmedData } = useQuery({ queryKey: ["timeline"], queryFn: fetchTimeline, initialData });
+  const data = useRecordPreview(["timeline"], confirmedData);
   const [kind, setKind] = useState("all");
   const [query, setQuery] = useState("");
   const [childId, setChildId] = useState("all");
@@ -113,12 +115,12 @@ export function TimelineView({ initialData, canManage = false, canPurge = false 
                       </p>
                       {item.description && <p className="mt-3 max-w-3xl whitespace-pre-wrap text-sm leading-6 text-foreground/85">{item.description}</p>}
                       {attachments.length > 0 && <div className="mt-3 flex flex-wrap gap-2">{attachments.map((attachment) => <a key={attachment.id} href={`/api/attachments/${attachment.id}`} className={buttonVariants({ variant: "outline", size: "sm" })}><Download className="size-3.5" />{attachment.originalName}</a>)}</div>}
-                      <p className="mt-3 flex items-center gap-1.5 text-xs text-muted-foreground"><Clock3 className="size-3" />Entered {formatDateTime(item.recordedAt, data.workspace.timezone)}</p>
+                      <p className="mt-3 flex items-center gap-1.5 text-xs text-muted-foreground"><Clock3 className="size-3" />{isRecordSaving(item) ? "Saving…" : `Entered ${formatDateTime(item.recordedAt, data.workspace.timezone)}`}</p>
                     </div>
                     <div className="flex items-center gap-1">
-                      <RevisionHistoryDialog revisions={revisions} timezone={data.workspace.timezone} />
-                      {canManage && item.kind !== "special_day" && item.description && <CorrectionDialog recordType={(item.kind === "care" ? "care_entry" : item.kind) as RecordType} recordId={item.id} currentText={item.description} mode={item.kind === "care" && item.dailyLogStatus === "open" ? "edit" : "correct"} />}
-                      {canPurge && item.kind !== "special_day" && <PurgeDialog recordType={(item.kind === "care" ? "care_entry" : item.kind) as RecordType} recordId={item.id} />}
+                      {!isRecordSaving(item) && <RevisionHistoryDialog revisions={revisions} timezone={data.workspace.timezone} />}
+                      {canManage && !item.id.startsWith("pending:") && item.kind !== "special_day" && item.description && <CorrectionDialog disabled={isRecordSaving(item)} recordType={(item.kind === "care" ? "care_entry" : item.kind) as RecordType} recordId={item.id} currentText={item.description} mode={item.kind === "care" && item.dailyLogStatus === "open" ? "edit" : "correct"} />}
+                      {canPurge && !isRecordSaving(item) && item.kind !== "special_day" && <PurgeDialog recordType={(item.kind === "care" ? "care_entry" : item.kind) as RecordType} recordId={item.id} />}
                     </div>
                   </div>
                 </CardContent>
@@ -130,7 +132,7 @@ export function TimelineView({ initialData, canManage = false, canPurge = false 
       </div>
       </TabsContent>
       <TabsContent value="analytics">
-        <TimelineAnalytics data={data} />
+        <TimelineAnalytics data={confirmedData} />
       </TabsContent>
     </Tabs>
   );

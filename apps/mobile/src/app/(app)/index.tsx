@@ -1,3 +1,6 @@
+import type { CustomCareRecordInput, Day } from "@family-daybook/contracts";
+import { useRecordMutation, useRecordPreview, isRecordSaving } from "@family-daybook/api-client/record-saving";
+import { carePreview, pendingIdentity } from "@/record-previews";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Redirect, useRouter } from "expo-router";
@@ -11,7 +14,7 @@ import { useAppTheme, useThemedStyles } from "@/mobile-theme";
 import { useApi, useDaybookSession } from "@/providers";
 import { spacing, type ThemeColors } from "@/theme";
 import { recordingRequestForTask } from "@/today-recording";
-import { formatLocalDate, friendlyError, shiftDate, todayLocalDate } from "@/utils";
+import { formatLocalDate, friendlyError, localDateTimeIso, shiftDate, todayLocalDate } from "@/utils";
 
 type CareStatus = "completed" | "partial" | "missed" | "not_applicable";
 
@@ -49,7 +52,8 @@ export default function TodayScreen() {
   const [caregiverIds, setCaregiverIds] = useState<string[]>([]);
   const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
   const isReviewer = session.data?.member.role === "reviewer";
-  const day = useQuery({ queryKey: ["day", date], queryFn: () => api.getDay(date), enabled: session.data?.billing.status === "active" && !isReviewer });
+  const dayQuery = useQuery({ queryKey: ["day", date], queryFn: () => api.getDay(date), enabled: session.data?.billing.status === "active" && !isReviewer });
+  const day = { ...dayQuery, data: useRecordPreview(["day", date], dayQuery.data) };
   const settings = useQuery({ queryKey: ["settings"], queryFn: api.getSettings, enabled: Boolean(session.data?.capabilities.mutateRecords) });
   const activeTask = useMemo(() => day.data?.tasks.find((item) => item.id === activeTaskId), [activeTaskId, day.data?.tasks]);
 
@@ -59,39 +63,55 @@ export default function TodayScreen() {
       queryClient.invalidateQueries({ queryKey: ["timeline"] }),
     ]);
   };
-  const routine = useMutation({
-    mutationFn: async () => {
-      if (!day.data || !activeTask) throw new Error("Choose a routine.");
-      const request = recordingRequestForTask({ date, timeZone, task: activeTask, status, localTime, caregiverIds });
-      if (request.kind === "special_arrangement") {
-        return api.createCareRecord(request.input, day.data.dayVersion);
-      }
-      return api.recordRoutine(date, request.input, day.data.dayVersion);
+  type RoutineSubmission = { date: string; timeZone: string; task: Day["tasks"][number]; status: CareStatus; localTime: string; caregiverIds: string[]; version: string };
+  const routine = useRecordMutation({
+    preview: (submission: RoutineSubmission) => {
+      const request = recordingRequestForTask(submission);
+      const occurredAt = request.kind === "special_arrangement" ? request.input.occurredAt : localDateTimeIso(submission.date, (submission.status === "completed" || submission.status === "partial") ? submission.localTime : submission.task.suggestedTime, submission.timeZone);
+      return carePreview({ ...pendingIdentity(), dailyLogId: "", lateEntry: false, ...request.input,
+        taskKey: submission.task.taskKey, taskLabel: submission.task.label, occurredAt,
+        templateItemId: submission.task.templateItemId, arrangementTaskId: submission.task.arrangementTaskId,
+      }, submission.date, submission.task.id);
     },
-    onSuccess: async () => {
+    savedId: (result) => result.record.id,
+    confirm: (result, submission) => carePreview(result.record, submission.date, submission.task.id),
+    mutationFn: async (submission: RoutineSubmission) => {
+      const request = recordingRequestForTask(submission);
+      if (request.kind === "special_arrangement") return api.createCareRecord(request.input, submission.version);
+      return api.recordRoutine(submission.date, request.input, submission.version);
+    },
+    onSuccess: async (_result, submission) => {
+      await Promise.all([queryClient.invalidateQueries({ queryKey: ["day", submission.date] }), queryClient.invalidateQueries({ queryKey: ["timeline"] })]);
       setActiveTaskId(undefined);
-      await refresh();
     },
   });
-  const custom = useMutation({
-    mutationFn: (input: unknown) => api.createCareRecord(input, day.data!.dayVersion),
-    onSuccess: async () => {
+  const custom = useRecordMutation({
+    preview: ({ input }: { input: CustomCareRecordInput; version: string }) => carePreview({
+      ...pendingIdentity(), dailyLogId: "", lateEntry: false, templateItemId: undefined, arrangementTaskId: undefined, ...input,
+      taskKey: "custom", taskLabel: input.source.kind === "custom" ? input.source.label : "Care record",
+    }, input.localDate),
+    savedId: (result) => result.record.id,
+    confirm: (result, { input }) => carePreview(result.record, input.localDate),
+    mutationFn: ({ input, version }: { input: CustomCareRecordInput; version: string }) => api.createCareRecord(input, version),
+    onSuccess: async (_result, { input }) => {
+      await Promise.all([queryClient.invalidateQueries({ queryKey: ["day", input.localDate] }), queryClient.invalidateQueries({ queryKey: ["timeline"] })]);
       setCustomOpen(false);
-      await refresh();
     },
   });
+  const savingCare = routine.isPending || custom.isPending;
   const saveNotes = useMutation({ mutationFn: () => api.updateDayNotes(date, noteDrafts[date] ?? day.data?.notes ?? "", day.data!.dayVersion), onSuccess: refresh });
   const finalize = useMutation({ mutationFn: () => api.finalizeDay(date, day.data!.dayVersion), onSuccess: refresh });
   const canEdit = Boolean(session.data?.capabilities.mutateRecords && day.data?.status === "open");
   const historical = date < today;
 
   const navigateToDate = (nextDate: string) => {
-    if (nextDate > today) return;
+    if (nextDate > today || savingCare) return;
     setActiveTaskId(undefined);
     setCustomOpen(false);
     setDate(nextDate);
   };
   const openTask = (taskId: string) => {
+    if (savingCare) return;
     const task = day.data?.tasks.find((item) => item.id === taskId);
     if (!task) return;
     routine.reset();
@@ -112,7 +132,7 @@ export default function TodayScreen() {
     <Screen eyebrow="Daily care log" title={title} subtitle={`A clear, factual view of ${historical ? "care on this day" : "today’s care"} for your children.`}>
       <View style={styles.headingActions}>
         <ActionButton compact icon="calendar-number-outline" label="Special days" secondary onPress={() => router.push("/(app)/special-days")} />
-        {canEdit ? <ActionButton compact icon="add" label="Add record" onPress={() => { custom.reset(); setCustomOpen(true); }} /> : null}
+        {canEdit ? <ActionButton compact icon="add" label="Add record" disabled={savingCare} onPress={() => { custom.reset(); setCustomOpen(true); }} /> : null}
       </View>
 
       <Card>
@@ -176,7 +196,7 @@ export default function TodayScreen() {
 
         <View style={styles.taskList}>
           {day.data.tasks.map((task) => {
-            const entry = day.data.careEntries.find((item) => item.id === task.entryId);
+            const entry = day.data!.careEntries.find((item) => item.id === task.entryId);
             const recorded = Boolean(task.recorded && entry);
             const completed = entry?.status === "completed";
             const taskSubtitle = recorded && entry
@@ -186,7 +206,7 @@ export default function TodayScreen() {
               <Pressable
                 accessibilityLabel={`${recorded ? "View" : "Record"} ${task.label}`}
                 accessibilityRole="button"
-                disabled={!recorded && !canEdit}
+                disabled={savingCare || (!recorded && !canEdit)}
                 key={task.id}
                 onPress={() => recorded && entry
                   ? router.push({ pathname: "/records/[recordType]/[id]", params: { recordType: "care_entry", id: entry.id, localDate: date } })
@@ -199,7 +219,7 @@ export default function TodayScreen() {
                 <View style={styles.taskCopy}>
                   <View style={styles.taskTitleRow}>
                     <Text numberOfLines={1} style={styles.taskTitle}>{task.label}</Text>
-                    {entry ? <Badge danger={entry.status === "missed"}>{entry.status.replace("_", " ")}</Badge> : null}
+                    {entry ? <Badge danger={entry.status === "missed"}>{isRecordSaving(entry) ? "Saving…" : entry.status.replace("_", " ")}</Badge> : null}
                   </View>
                   <Text numberOfLines={1} style={styles.taskSubtitle}>{taskSubtitle}</Text>
                 </View>
@@ -209,12 +229,13 @@ export default function TodayScreen() {
           })}
         </View>
 
+        {day.data.careEntries.filter((entry) => isRecordSaving(entry) && !day.data!.tasks.some((task) => task.entryId === entry.id)).map((entry) => <InlineNotice key={entry.id}>{entry.taskLabel} · Saving…</InlineNotice>)}
         <Card>
           <Heading>Day notes</Heading>
           <Body muted>{day.data.status === "finalized" ? "These notes were locked when the day was finalized." : "Add factual context that applies to the day as a whole."}</Body>
           <Field label="Notes (optional)" value={noteDrafts[date] ?? day.data.notes ?? ""} onChangeText={(value) => setNoteDrafts((drafts) => ({ ...drafts, [date]: value }))} multiline />
           {saveNotes.error ? <Text accessibilityLiveRegion="polite" style={styles.errorText}>{friendlyError(saveNotes.error)}</Text> : null}
-          {canEdit ? <ActionButton compact label={saveNotes.isPending ? "Saving…" : "Save notes"} disabled={saveNotes.isPending || (noteDrafts[date] ?? day.data.notes ?? "") === (day.data.notes ?? "")} onPress={() => saveNotes.mutate()} /> : null}
+          {canEdit ? <ActionButton compact label={saveNotes.isPending ? "Saving…" : "Save notes"} disabled={savingCare || saveNotes.isPending || (noteDrafts[date] ?? day.data.notes ?? "") === (day.data.notes ?? "")} onPress={() => saveNotes.mutate()} /> : null}
         </Card>
 
         {session.data?.capabilities.finalizeDays && day.data.status === "open" ? (
@@ -224,12 +245,12 @@ export default function TodayScreen() {
               <View style={styles.finalizeCopy}><Heading>Ready to close the day?</Heading><Body muted>Finalizing locks this routine snapshot. Corrections remain available.</Body></View>
             </View>
             {finalize.error ? <Text accessibilityLiveRegion="polite" style={styles.errorText}>{friendlyError(finalize.error)}</Text> : null}
-            <ActionButton icon="lock-closed-outline" label={finalize.isPending ? "Finalizing…" : "Finalize day"} secondary disabled={finalize.isPending} onPress={() => Alert.alert("Finalize this day?", "Records become read-only. Corrections remain available.", [{ text: "Cancel", style: "cancel" }, { text: "Finalize", style: "destructive", onPress: () => finalize.mutate() }])} />
+            <ActionButton icon="lock-closed-outline" label={finalize.isPending ? "Finalizing…" : "Finalize day"} secondary disabled={finalize.isPending || savingCare || saveNotes.isPending} onPress={() => Alert.alert("Finalize this day?", "Records become read-only. Corrections remain available.", [{ text: "Cancel", style: "cancel" }, { text: "Finalize", style: "destructive", onPress: () => finalize.mutate() }])} />
           </Card>
         ) : null}
       </> : null}
 
-      <FormSheet title={activeTask?.label ?? "Record care"} visible={Boolean(activeTask)} onClose={() => setActiveTaskId(undefined)}>
+      <FormSheet title={activeTask?.label ?? "Record care"} visible={Boolean(activeTask) && !routine.isPending} onClose={() => setActiveTaskId(undefined)}>
         {activeTask ? <>
           <Body muted>{formatLocalDate(date)} · planned around {activeTask.suggestedTime}</Body>
           <Heading>Status</Heading>
@@ -237,13 +258,13 @@ export default function TodayScreen() {
           {(status === "completed" || status === "partial") ? <Field label="Actual local time (HH:mm)" value={localTime} onChangeText={setLocalTime} /> : null}
           {(status === "completed" || status === "partial") ? <><Heading>Caregivers</Heading>{settings.data?.caregivers.filter((item) => item.active).map((caregiver) => <ChoiceRow key={caregiver.id} label={caregiver.displayName} selected={caregiverIds.includes(caregiver.id)} onPress={() => setCaregiverIds((selected) => selected.includes(caregiver.id) ? selected.filter((id) => id !== caregiver.id) : [...selected, caregiver.id])} />)}</> : null}
           {routine.error ? <Text accessibilityLiveRegion="polite" style={styles.errorText}>{friendlyError(routine.error)}</Text> : null}
-          <ActionButton label={routine.isPending ? "Saving…" : "Save care record"} disabled={routine.isPending || ((status === "completed" || status === "partial") && caregiverIds.length === 0)} onPress={() => routine.mutate()} />
+          <ActionButton label={routine.isPending ? "Saving…" : "Save care record"} disabled={routine.isPending || ((status === "completed" || status === "partial") && caregiverIds.length === 0)} onPress={() => { if (activeTask && dayQuery.data) routine.mutate({ date, timeZone, task: activeTask, status, localTime, caregiverIds, version: dayQuery.data.dayVersion }); }} />
           <ActionButton label="Cancel" secondary onPress={() => setActiveTaskId(undefined)} />
         </> : null}
       </FormSheet>
 
-      <FormSheet title="Add care record" visible={customOpen} onClose={() => setCustomOpen(false)}>
-        {day.data && settings.data ? <CustomCareForm key={date} date={date} timeZone={timeZone} childOptions={settings.data.children.filter((child) => child.active)} caregivers={settings.data.caregivers.filter((caregiver) => caregiver.active)} pending={custom.isPending} onSubmit={(value) => custom.mutate(value)} /> : <ScreenState loading={settings.isPending} error={settings.error} onRetry={() => void settings.refetch()} />}
+      <FormSheet title="Add care record" visible={customOpen && !custom.isPending} onClose={() => setCustomOpen(false)}>
+        {day.data && settings.data ? <CustomCareForm initialInput={custom.isError ? custom.variables?.input : undefined} key={date} date={date} timeZone={timeZone} childOptions={settings.data.children.filter((child) => child.active)} caregivers={settings.data.caregivers.filter((caregiver) => caregiver.active)} pending={custom.isPending} onSubmit={(input) => { if (dayQuery.data) custom.mutate({ input, version: dayQuery.data.dayVersion }); }} /> : <ScreenState loading={settings.isPending} error={settings.error} onRetry={() => void settings.refetch()} />}
         {custom.error ? <Text accessibilityLiveRegion="polite" style={styles.errorText}>{friendlyError(custom.error)}</Text> : null}
       </FormSheet>
     </Screen>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { useRecordPreview, isRecordSaving } from "@family-daybook/api-client/record-saving";
 import { CalendarCheck2, MapPin, UserRound } from "lucide-react";
 
 import { AppointmentDialog } from "@/components/forms/appointment-dialog";
@@ -12,7 +13,8 @@ import { fetchAppointments } from "@/lib/fetchers";
 import type { Appointment, Caregiver, Child, Workspace } from "@/lib/domain/types";
 
 export function AppointmentsView({ initialData, childOptions, caregivers, workspace }: { initialData: Appointment[]; childOptions: Child[]; caregivers: Caregiver[]; workspace: Workspace }) {
-  const { data } = useQuery({ queryKey: ["appointments"], queryFn: fetchAppointments, initialData });
+  const { data: confirmedData } = useQuery({ queryKey: ["appointments"], queryFn: fetchAppointments, initialData });
+  const data = useRecordPreview(["appointments"], confirmedData);
   return (
     <div className="space-y-5">
       <div className="flex justify-end"><AppointmentDialog childOptions={childOptions} caregivers={caregivers} /></div>
@@ -22,7 +24,7 @@ export function AppointmentsView({ initialData, childOptions, caregivers, worksp
             <CardContent className="p-5">
               <div className="flex items-start justify-between gap-3">
                 <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-blue-50 text-blue-800 dark:bg-blue-950/60 dark:text-blue-200"><CalendarCheck2 className="size-5" /></span>
-                <Badge className="capitalize" variant={appointment.status === "missed" ? "destructive" : "secondary"}>{appointment.status}</Badge>
+                <Badge className="capitalize" variant={appointment.status === "missed" ? "destructive" : "secondary"}>{isRecordSaving(appointment) ? "Saving…" : appointment.status}</Badge>
               </div>
               <h2 className="mt-4 text-lg font-semibold">{appointment.title}</h2>
               <p className="mt-1 text-sm text-muted-foreground">{formatDateTime(appointment.scheduledAt, workspace.timezone)}</p>
@@ -31,7 +33,7 @@ export function AppointmentsView({ initialData, childOptions, caregivers, worksp
                 {appointment.location && <p className="flex items-center gap-2"><MapPin className="size-4 text-muted-foreground" />{appointment.location}</p>}
               </div>
               {appointment.notes && <p className="mt-4 border-t pt-4 text-sm leading-6">{appointment.notes}</p>}
-              {appointment.notes && <div className="mt-2 flex justify-end"><CorrectionDialog recordType="appointment" recordId={appointment.id} currentText={appointment.notes} /></div>}
+              {appointment.notes && !appointment.id.startsWith("pending:") && <div className="mt-2 flex justify-end"><CorrectionDialog disabled={isRecordSaving(appointment)} recordType="appointment" recordId={appointment.id} currentText={appointment.notes} /></div>}
             </CardContent>
           </Card>
         ))}
