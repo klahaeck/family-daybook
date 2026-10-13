@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRecordPreview, isRecordSaving } from "@family-daybook/api-client/record-saving";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -116,7 +117,8 @@ export function TodayDashboard({ date, today, initialData }: { date: string; tod
   const router = useRouter();
   const [isNavigating, startNavigation] = useTransition();
   const queryClient = useQueryClient();
-  const { data } = useQuery({ queryKey: ["dashboard", date], queryFn: () => fetchDashboard(date), initialData });
+  const { data: confirmedData } = useQuery({ queryKey: ["dashboard", date], queryFn: () => fetchDashboard(date), initialData });
+  const data = useRecordPreview(["dashboard", date], confirmedData);
   const finalize = useMutation({
     mutationFn: () => finalizeDailyLogAction(date),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["dashboard", date] }),
@@ -309,8 +311,9 @@ export function TodayDashboard({ date, today, initialData }: { date: string; tod
           {sortRoutineItemsByTime(data.tasks).map((task) => {
             const recorded = Boolean(task.entry);
             const completed = task.entry?.status === "completed";
+            const saving = Boolean(task.entry && isRecordSaving(task.entry));
             const trigger = (
-              <button type="button" aria-label={`${recorded ? "Change" : "Record"} ${task.label}`} className="group flex w-full min-w-0 max-w-full items-center gap-4 rounded-2xl border bg-card p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-md">
+              <button type="button" disabled={saving} aria-busy={saving} aria-label={`${recorded ? "Change" : "Record"} ${task.label}`} className="group flex w-full min-w-0 max-w-full items-center gap-4 rounded-2xl border bg-card p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-md">
                 <span className={`grid size-11 shrink-0 place-items-center rounded-2xl ${completed ? "bg-primary text-primary-foreground" : "bg-secondary text-secondary-foreground"}`}>
                   {recorded ? <CheckCircle2 className="size-5" /> : <Clock3 className="size-5" />}
                 </span>
@@ -322,7 +325,7 @@ export function TodayDashboard({ date, today, initialData }: { date: string; tod
                         variant={task.entry.status === "missed" ? "destructive" : "secondary"}
                         className="shrink-0"
                       >
-                        {CARE_STATUS_LABELS[task.entry.status]}
+                        {saving ? "Saving…" : CARE_STATUS_LABELS[task.entry.status]}
                       </Badge>
                     )}
                   </span>
@@ -336,11 +339,15 @@ export function TodayDashboard({ date, today, initialData }: { date: string; tod
               </button>
             );
             return (
-              <CareEntryDialog key={`${task.id}-${task.entry?.currentRevisionId ?? "new"}`} task={task} date={date} today={today} timezone={data.workspace.timezone} childOptions={data.children} caregivers={data.caregivers} finalized={data.dailyLog.status === "finalized"} trigger={trigger} />
+              <CareEntryDialog key={task.id} task={confirmedData.tasks.find((item) => item.id === task.id) ?? task} date={date} today={today} timezone={data.workspace.timezone} childOptions={data.children} caregivers={data.caregivers} finalized={data.dailyLog.status === "finalized"} trigger={trigger} />
             );
           })}
         </div>
       </section>
+
+      {data.recentEntries.filter((entry) => isRecordSaving(entry) && !data.tasks.some((task) => task.entry?.id === entry.id)).map((entry) => (
+        <p key={entry.id} role="status" className="text-sm text-muted-foreground">{entry.taskLabel} · Saving…</p>
+      ))}
 
       <DailyLogNotes
         key={`${data.dailyLog.id}-${data.dailyLog.status}`}
@@ -357,7 +364,7 @@ export function TodayDashboard({ date, today, initialData }: { date: string; tod
                 <p className="mt-1 text-sm text-muted-foreground">Finalizing locks the routine snapshot. Later additions remain possible and are labeled with their entry time.</p>
               </div>
             </div>
-            <Button variant="outline" onClick={() => finalize.mutate()} disabled={finalize.isPending}>
+            <Button variant="outline" onClick={() => finalize.mutate()} disabled={finalize.isPending || data.recentEntries.some(isRecordSaving)}>
               <LockKeyhole className="size-4" /> {finalize.isPending ? "Finalizing…" : "Finalize day"}
             </Button>
           </CardContent>

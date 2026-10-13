@@ -1,3 +1,5 @@
+import { useRecordMutation, useRecordPreview, isRecordSaving } from "@family-daybook/api-client/record-saving";
+import { carePreview, textPreview } from "@/record-previews";
 import type {
   Appointment,
   CareEntry,
@@ -124,11 +126,10 @@ function CareEditor({ bundle, finalized, localDate }: {
   const [notes, setNotes] = useState(record.notes ?? "");
   const [reason, setReason] = useState("");
 
-  const save = useMutation({
-    mutationFn: async () => {
+  const buildInput = () => {
       const providedCare = status === "completed" || status === "partial";
       const parsedDuration = durationMinutes.trim() ? Number(durationMinutes) : undefined;
-      const input = {
+      return {
         childIds,
         caregiverIds: providedCare ? caregiverIds : [],
         status,
@@ -137,9 +138,12 @@ function CareEditor({ bundle, finalized, localDate }: {
         activityType: providedCare && activityType.trim() ? activityType : undefined,
         notes: notes.trim() ? notes : undefined,
       };
-      if (finalized) {
-        return api.correctCareRecord(record.id, { ...input, reason }, bundle.recordVersion);
-      }
+  };
+  const save = useRecordMutation({
+    preview: (input: ReturnType<typeof buildInput>) => carePreview({ ...record, ...input }, localDate),
+    savedId: () => record.id,
+    mutationFn: async (input: ReturnType<typeof buildInput>) => {
+      if (finalized) return api.correctCareRecord(record.id, { ...input, reason }, bundle.recordVersion);
       return api.updateCareRecord(record.id, input, bundle.recordVersion);
     },
     onSuccess: async () => {
@@ -150,6 +154,7 @@ function CareEditor({ bundle, finalized, localDate }: {
       ]);
     },
   });
+
   const providedCare = status === "completed" || status === "partial";
 
   return (
@@ -200,7 +205,7 @@ function CareEditor({ bundle, finalized, localDate }: {
       <ActionButton
         label={save.isPending ? "Saving…" : finalized ? "Add correction" : "Save changes"}
         disabled={save.isPending || childIds.length === 0 || (providedCare && caregiverIds.length === 0) || (finalized && reason.trim().length < 5)}
-        onPress={() => save.mutate()}
+        onPress={() => save.mutate(buildInput())}
       />
     </Card>
   );
@@ -214,8 +219,9 @@ function TextCorrection({ bundle, recordType }: { bundle: RecordBundle; recordTy
   const originalText = isIncident(record) ? record.observations : isAppointment(record) ? record.notes ?? "" : "";
   const [correctedText, setCorrectedText] = useState(originalText);
   const [reason, setReason] = useState("");
-  const correct = useMutation({
-    mutationFn: () => api.correctRecord({ recordType, recordId: record.id, correctedText, reason }, bundle.recordVersion),
+  const correct = useRecordMutation({
+    preview: (input: { correctedText: string; reason: string }) => textPreview(recordType, record.id, input.correctedText),
+    mutationFn: (input: { correctedText: string; reason: string }) => api.correctRecord({ recordType, recordId: record.id, ...input }, bundle.recordVersion),
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["record", recordType, record.id] }),
@@ -231,7 +237,7 @@ function TextCorrection({ bundle, recordType }: { bundle: RecordBundle; recordTy
       <Field label={recordType === "incident" ? "Corrected observations" : "Corrected notes"} value={correctedText} onChangeText={setCorrectedText} multiline />
       <Field label="Correction reason" value={reason} onChangeText={setReason} multiline />
       {correct.error ? <Text style={{ color: colors.danger }}>{friendlyError(correct.error)}</Text> : null}
-      <ActionButton label={correct.isPending ? "Saving…" : "Add correction"} disabled={correct.isPending || correctedText.trim().length === 0 || reason.trim().length < 5} onPress={() => correct.mutate()} />
+      <ActionButton label={correct.isPending ? "Saving…" : "Add correction"} disabled={correct.isPending || correctedText.trim().length === 0 || reason.trim().length < 5} onPress={() => correct.mutate({ correctedText, reason })} />
     </Card>
   );
 }
@@ -367,11 +373,12 @@ export default function RecordDetailScreen() {
   const recordType = isRecordType(recordTypeValue) ? recordTypeValue : undefined;
   const api = useApi();
   const session = useDaybookSession();
-  const bundle = useQuery({
+  const bundleQuery = useQuery({
     queryKey: ["record", recordType, id],
     queryFn: () => api.getRecordBundle(recordType!, id!),
     enabled: Boolean(recordType && id),
   });
+  const bundle = { ...bundleQuery, data: useRecordPreview(["record", recordType, id], bundleQuery.data) };
   const recordLocalDate = useMemo(() => {
     if (hintedLocalDate) return hintedLocalDate;
     if (bundle.data && isCareEntry(bundle.data.record) && session.data) {
@@ -396,17 +403,18 @@ export default function RecordDetailScreen() {
     <Screen title={title} subtitle="Review the current record, its immutable history, and supporting files.">
       <ScreenState loading={bundle.isPending} error={bundle.error} onRetry={() => void bundle.refetch()} />
       {bundle.data ? <>
+        {isRecordSaving(bundle.data.record) ? <InlineNotice>Saving…</InlineNotice> : null}
         <DetailSummary record={bundle.data.record} timeZone={timeZone} />
         {recordType === "care_entry" && canMutate ? (
           <>
             <ScreenState loading={day.isPending} error={day.error} onRetry={() => void day.refetch()} />
-            {day.data && recordLocalDate ? <CareEditor key={bundle.data.recordVersion} bundle={bundle.data} finalized={day.data.status === "finalized"} localDate={recordLocalDate} /> : null}
+            {day.data && recordLocalDate ? <CareEditor key={bundle.data.record.id} bundle={bundleQuery.data!} finalized={day.data.status === "finalized"} localDate={recordLocalDate} /> : null}
           </>
         ) : null}
-        {(recordType === "appointment" || recordType === "incident") && canMutate ? <TextCorrection key={bundle.data.recordVersion} bundle={bundle.data} recordType={recordType} /> : null}
+        {(recordType === "appointment" || recordType === "incident") && canMutate ? <TextCorrection key={bundle.data.record.id} bundle={bundleQuery.data!} recordType={recordType} /> : null}
         <RevisionHistory revisions={bundle.data.revisions} timeZone={timeZone} />
-        <Attachments attachments={bundle.data.attachments} recordType={recordType} recordId={id} canUpload={canMutate} />
-        {session.data?.capabilities.hardPurge ? <PurgeRecord recordType={recordType} recordId={id} /> : null}
+        <Attachments attachments={bundle.data.attachments} recordType={recordType} recordId={id} canUpload={canMutate && !isRecordSaving(bundle.data.record)} />
+        {session.data?.capabilities.hardPurge && !isRecordSaving(bundle.data.record) ? <PurgeRecord recordType={recordType} recordId={id} /> : null}
       </> : null}
     </Screen>
   );

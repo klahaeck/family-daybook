@@ -34,7 +34,7 @@ import {
   specialArrangementUpdateSchema,
   workspaceSettingsSchema,
 } from "@/lib/domain/schemas";
-import type { ActionResult, Caregiver, Child, RoutineTemplate, Workspace } from "@/lib/domain/types";
+import type { ActionResult, Appointment, CareEntry, Incident, Caregiver, Child, RoutineTemplate, Workspace } from "@/lib/domain/types";
 import { getRepository, getRequestContext } from "@/lib/repository";
 import {
   completeAttachmentUpload,
@@ -110,7 +110,7 @@ function refreshRecords() {
   revalidatePath("/app/special-days");
 }
 
-export async function createCareEntryAction(input: unknown): Promise<ActionResult<{ id: string }>> {
+export async function createCareEntryAction(input: unknown): Promise<ActionResult<{ id: string; record: CareEntry }>> {
   const parsed = careEntrySchema.safeParse(input);
   if (!parsed.success) return validationFailure(parsed.error);
   try {
@@ -127,7 +127,7 @@ export async function createCareEntryAction(input: unknown): Promise<ActionResul
       source,
     });
     refreshRecords();
-    return { ok: true, data: { id: entry.id } };
+    return { ok: true, data: { id: entry.id, record: entry } };
   } catch (error) {
     return fail(error);
   }
@@ -154,7 +154,7 @@ export async function correctCareEntryAction(
 
 export async function updateCareEntryAction(
   input: unknown,
-): Promise<ActionResult<{ id: string }>> {
+): Promise<ActionResult<{ id: string; record: CareEntry }>> {
   const parsed = careEntryUpdateSchema.safeParse(input);
   if (!parsed.success) return validationFailure(parsed.error);
   try {
@@ -164,7 +164,7 @@ export async function updateCareEntryAction(
       parsed.data,
     );
     refreshRecords();
-    return { ok: true, data: { id: entry.id } };
+    return { ok: true, data: { id: entry.id, record: entry } };
   } catch (error) {
     return fail(error);
   }
@@ -216,7 +216,7 @@ export async function updateDailyLogNotesAction(
   }
 }
 
-export async function createAppointmentAction(input: unknown): Promise<ActionResult<{ id: string }>> {
+export async function createAppointmentAction(input: unknown): Promise<ActionResult<{ id: string; record: Appointment }>> {
   const parsed = appointmentSchema.safeParse(input);
   if (!parsed.success) return validationFailure(parsed.error);
   try {
@@ -224,13 +224,13 @@ export async function createAppointmentAction(input: unknown): Promise<ActionRes
     const context = await getRequestContext();
     const appointment = await repository.createAppointment(context, parsed.data);
     refreshRecords();
-    return { ok: true, data: { id: appointment.id } };
+    return { ok: true, data: { id: appointment.id, record: appointment } };
   } catch (error) {
     return fail(error);
   }
 }
 
-export async function createIncidentAction(input: unknown): Promise<ActionResult<{ id: string }>> {
+export async function createIncidentAction(input: unknown): Promise<ActionResult<{ id: string; record: Incident }>> {
   const parsed = incidentSchema.safeParse(input);
   if (!parsed.success) return validationFailure(parsed.error);
   try {
@@ -238,7 +238,7 @@ export async function createIncidentAction(input: unknown): Promise<ActionResult
     const context = await getRequestContext();
     const incident = await repository.createIncident(context, parsed.data);
     refreshRecords();
-    return { ok: true, data: { id: incident.id } };
+    return { ok: true, data: { id: incident.id, record: incident } };
   } catch (error) {
     return fail(error);
   }

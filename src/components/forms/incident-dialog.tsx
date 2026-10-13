@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Check, Clock3, ShieldPlus } from "lucide-react";
 
 import { createIncidentAction } from "@/app/actions";
@@ -12,21 +11,31 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toDateTimeLocal } from "@/lib/domain/dates";
 import type { Child } from "@/lib/domain/types";
-import { AttachmentPicker, FieldError, MultiCheck, uploadFiles } from "./form-parts";
+import { incidentSchema, type IncidentInput } from "@/lib/domain/schemas";
+import { incidentPreview, pendingIdentity } from "@/lib/record-previews";
+import { useRecordSave } from "./use-record-save";
+import { AttachmentPicker, FieldError, MultiCheck } from "./form-parts";
 
 export function IncidentDialog({ childOptions }: { childOptions: Child[] }) {
-  const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [childIds, setChildIds] = useState<string[]>(childOptions.map((child) => child.id));
   const [category, setCategory] = useState("safety_hazard");
   const [files, setFiles] = useState<File[]>([]);
   const [error, setError] = useState<string>();
-  const mutation = useMutation({
-    mutationFn: async (formData: FormData) => {
-      setError(undefined);
-      const split = (key: string) =>
-        formData.get(key)?.toString().split(",").map((item) => item.trim()).filter(Boolean) ?? [];
-      const result = await createIncidentAction({
+  const mutation = useRecordSave({
+    recordType: "incident", queryKeys: [["incidents"], ["timeline"]], files, setFiles, setOpen,
+    preview: (input: IncidentInput) => incidentPreview({ ...pendingIdentity(), ...input }),
+    save: async (input: IncidentInput) => {
+      const result = await createIncidentAction(input);
+      if (!result.ok || !result.data) throw new Error(result.error ?? "Unable to save incident");
+      return { id: result.data.id, confirmed: result.data.record ? incidentPreview(result.data.record) : [] };
+    },
+  });
+  const submit = (formData: FormData) => {
+    setError(undefined);
+    try {
+      const split = (key: string) => formData.get(key)?.toString().split(",").map((item) => item.trim()).filter(Boolean) ?? [];
+      mutation.mutate(incidentSchema.parse({
         category,
         occurredAt: new Date(formData.get("occurredAt")!.toString()).toISOString(),
         discoveredAt: formData.get("discoveredAt")?.toString()
@@ -40,26 +49,15 @@ export function IncidentDialog({ childOptions }: { childOptions: Child[] }) {
         exactQuotes: formData.get("exactQuotes")?.toString() || undefined,
         immediateActions: formData.get("immediateActions")?.toString() || undefined,
         outcome: formData.get("outcome")?.toString() || undefined,
-      });
-      if (!result.ok || !result.data) throw new Error(result.error ?? "Unable to save incident");
-      await uploadFiles(files, "incident", result.data.id);
-    },
-    onSuccess: async () => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["incidents"] }),
-        queryClient.invalidateQueries({ queryKey: ["timeline"] }),
-      ]);
-      setOpen(false);
-      setFiles([]);
-    },
-    onError: (cause) => setError(cause.message),
-  });
+      }));
+    } catch { setError("Check the incident details and try again."); }
+  };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button />}><ShieldPlus className="size-4" /> Add incident</DialogTrigger>
-      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-2xl">
-        <form action={(data) => mutation.mutate(data)}>
+    <Dialog open={open} onOpenChange={(next) => { if (!mutation.isPending) setOpen(next); }}>
+      <DialogTrigger render={<Button disabled={mutation.isPending} />}><ShieldPlus className="size-4" /> Add incident</DialogTrigger>
+      <DialogContent keepMounted={mutation.preserveDraft} className="max-h-[92vh] overflow-y-auto sm:max-w-2xl">
+        <form onSubmit={(event) => { event.preventDefault(); if (!mutation.isPending) submit(new FormData(event.currentTarget)); }}>
           <DialogHeader>
             <DialogTitle>Document a factual incident</DialogTitle>
             <DialogDescription>Describe observable actions, exact words, context, and response. Avoid diagnoses, motives, or conclusions.</DialogDescription>
@@ -92,9 +90,9 @@ export function IncidentDialog({ childOptions }: { childOptions: Child[] }) {
               <div className="space-y-2"><Label htmlFor="outcome">Outcome</Label><Textarea id="outcome" name="outcome" maxLength={3000} rows={3} /></div>
             </div>
             <AttachmentPicker files={files} onChange={setFiles} />
-            {error && <FieldError errors={[error]} />}
+            {(error || mutation.errorMessage) && <FieldError errors={[error ?? mutation.errorMessage!]} />}
           </div>
-          <DialogFooter><Button type="submit" disabled={mutation.isPending || childIds.length === 0}>{mutation.isPending ? <Clock3 className="size-4 animate-spin" /> : <Check className="size-4" />}{mutation.isPending ? "Saving…" : "Save factual record"}</Button></DialogFooter>
+          <DialogFooter><Button type="submit" disabled={mutation.isPending || childIds.length === 0}>{mutation.isPending ? <Clock3 className="size-4 animate-spin" /> : <Check className="size-4" />}{mutation.isPending ? "Saving…" : mutation.retryingFiles ? "Retry supporting files" : "Save factual record"}</Button></DialogFooter>
         </form>
       </DialogContent>
     </Dialog>
