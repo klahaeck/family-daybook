@@ -63,9 +63,11 @@ export function CareEntryDialog({
 
   const defaultTime = task?.entry
     ? toDateTimeLocalInTimezone(new Date(task.entry.occurredAt), timezone)
-    : date === today
-      ? toDateTimeLocalInTimezone(new Date(), timezone)
-      : `${date}T${task?.suggestedTime ?? "12:00"}`;
+    : task?.suggestedTime
+      ? `${date}T${task.suggestedTime}`
+      : date === today
+        ? toDateTimeLocalInTimezone(new Date(), timezone)
+        : `${date}T12:00`;
 
   const mutation = useMutation({
     mutationFn: async (formData: FormData) => {

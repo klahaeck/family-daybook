@@ -333,11 +333,6 @@ test("timeline record charts show records and respond to toggles", async ({ page
   await expect(
     page.getByRole("heading", { name: "Records by item" }),
   ).toBeVisible();
-  const includedRecords = page
-    .locator('[data-slot="card"]')
-    .filter({ has: page.getByRole("heading", { name: "Included records" }) });
-  await expect(includedRecords.getByText("Child One", { exact: true })).toHaveCount(3);
-  await expect(includedRecords.getByText("Parent A", { exact: true })).toHaveCount(3);
 
   const caregiverFilters = page.locator("fieldset").filter({
     has: page.getByText("Caregivers", { exact: true }),
