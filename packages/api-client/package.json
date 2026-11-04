@@ -4,7 +4,12 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./record-saving": "./src/record-saving.ts"
+  },
+  "peerDependencies": {
+    "@tanstack/react-query": "^5.101.2",
+    "react": ">=19"
   },
   "dependencies": {
     "@family-daybook/contracts": "0.1.0",

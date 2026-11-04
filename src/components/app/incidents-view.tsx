@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { useRecordPreview, isRecordSaving } from "@family-daybook/api-client/record-saving";
 import { Download, Quote, ShieldCheck } from "lucide-react";
 
 import { CorrectionDialog } from "@/components/forms/correction-dialog";
@@ -33,7 +34,8 @@ export function IncidentsView({
   canManage: boolean;
   canPurge: boolean;
 }) {
-  const { data } = useQuery({ queryKey: ["incidents"], queryFn: fetchIncidents, initialData });
+  const { data: confirmedData } = useQuery({ queryKey: ["incidents"], queryFn: fetchIncidents, initialData });
+  const data = useRecordPreview(["incidents"], confirmedData);
   return (
     <div className="space-y-5">
       {canManage && <div className="flex justify-end"><IncidentDialog childOptions={childOptions} /></div>}
@@ -52,7 +54,7 @@ export function IncidentsView({
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
                   <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-amber-50 text-amber-900 dark:bg-amber-950/60 dark:text-amber-200"><ShieldCheck className="size-5" /></span>
                   <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2"><Badge variant="outline">{INCIDENT_LABELS[incident.category]}</Badge><span className="text-xs text-muted-foreground">Occurred {formatDateTime(incident.occurredAt, workspace.timezone)}</span></div>
+                    <div className="flex flex-wrap items-center gap-2"><Badge variant="outline">{isRecordSaving(incident) ? "Saving…" : INCIDENT_LABELS[incident.category]}</Badge><span className="text-xs text-muted-foreground">Occurred {formatDateTime(incident.occurredAt, workspace.timezone)}</span></div>
                     <p className="mt-4 whitespace-pre-wrap text-sm leading-6">{incident.observations}</p>
                     {incident.exactQuotes && <blockquote className="mt-4 flex gap-3 rounded-xl bg-muted/60 p-4 text-sm italic"><Quote className="size-4 shrink-0 text-muted-foreground" />{incident.exactQuotes}</blockquote>}
                     {(incident.immediateActions || incident.outcome) && <div className="mt-4 grid gap-3 border-t pt-4 sm:grid-cols-2">{incident.immediateActions && <div><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Immediate actions</p><p className="mt-1 text-sm">{incident.immediateActions}</p></div>}{incident.outcome && <div><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Outcome</p><p className="mt-1 text-sm">{incident.outcome}</p></div>}</div>}
@@ -77,14 +79,14 @@ export function IncidentsView({
                       </div>
                     )}
                     <div className="mt-3 flex flex-wrap justify-end gap-1">
-                      {canManage && remainingSlots > 0 && (
+                      {canManage && !isRecordSaving(incident) && remainingSlots > 0 && (
                         <IncidentAttachmentsDialog
                           recordId={incident.id}
                           remainingSlots={remainingSlots}
                         />
                       )}
-                      {canManage && <CorrectionDialog recordType="incident" recordId={incident.id} currentText={incident.observations} />}
-                      {canPurge && <PurgeDialog recordType="incident" recordId={incident.id} triggerLabel="Remove incident" />}
+                      {canManage && !incident.id.startsWith("pending:") && <CorrectionDialog disabled={isRecordSaving(incident)} recordType="incident" recordId={incident.id} currentText={incident.observations} />}
+                      {canPurge && !isRecordSaving(incident) && <PurgeDialog recordType="incident" recordId={incident.id} triggerLabel="Remove incident" />}
                     </div>
                   </div>
                 </div>

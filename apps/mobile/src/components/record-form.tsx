@@ -10,19 +10,22 @@ import { localDateTimeIso } from "@/utils";
 
 type Values = z.input<typeof customCareRecordInputSchema>;
 
-export function CustomCareForm({ date, timeZone, childOptions, caregivers, onSubmit, pending }: {
+export function CustomCareForm({ date, timeZone, childOptions, caregivers, onSubmit, pending, initialInput }: {
   date: string;
   timeZone: string;
   childOptions: Array<{ id: string; displayName: string }>;
   caregivers: Array<{ id: string; displayName: string }>;
   onSubmit: (input: Values) => void;
   pending: boolean;
+  initialInput?: Values;
 }) {
-  const [localTime, setLocalTime] = useState("12:00");
+  const [localTime, setLocalTime] = useState(() => initialInput
+    ? new Intl.DateTimeFormat("en-GB", { timeZone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(initialInput.occurredAt))
+    : "12:00");
   const [timeError, setTimeError] = useState<string>();
   const form = useForm<Values>({
     resolver: zodResolver(customCareRecordInputSchema),
-    defaultValues: {
+    defaultValues: initialInput ?? {
       localDate: date,
       source: { kind: "custom", label: "" },
       childIds: [],

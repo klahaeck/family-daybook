@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -8,6 +8,7 @@ import { TodayDashboard } from "@/components/app/today-dashboard";
 import { createCareEntryAction, updateDailyLogNotesAction } from "@/app/actions";
 import { createSeedState } from "@/lib/repository/seed";
 import type { DashboardData } from "@/lib/domain/types";
+import { fetchDashboard } from "@/lib/fetchers";
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn() }),
@@ -119,7 +120,8 @@ function renderDashboard(
     </QueryClientProvider>,
   );
 
-  return { tasks };
+  vi.mocked(fetchDashboard).mockResolvedValue(data);
+  return { tasks, data, queryClient };
 }
 
 describe("TodayDashboard", () => {
@@ -225,7 +227,7 @@ describe("TodayDashboard", () => {
     async (statusLabel, timeLabel) => {
       vi.mocked(createCareEntryAction).mockResolvedValueOnce({
         ok: true,
-        data: { id: "care_non_occurrence" },
+        data: { id: "care_non_occurrence", record: { ...createSeedState(true).careEntries[0], id: "care_non_occurrence" } },
       });
       const { tasks } = renderDashboard();
       const task = tasks.find(
@@ -282,5 +284,41 @@ describe("TodayDashboard", () => {
     expect(screen.getByRole("checkbox", { name: /Parent A/ })).not.toBeChecked();
     expect(screen.getByRole("checkbox", { name: /Parent B/ })).not.toBeChecked();
     expect(screen.getByRole("button", { name: "Save record" })).toBeDisabled();
+  });
+
+  it("updates routine progress immediately and restores the draft after a rejected save", async () => {
+    let resolve!: (result: Awaited<ReturnType<typeof createCareEntryAction>>) => void;
+    vi.mocked(createCareEntryAction).mockReturnValue(new Promise((done) => { resolve = done; }));
+    const { data } = renderDashboard("open", true);
+    fireEvent.click(screen.getByRole("button", { name: "Record Camp breakfast" }));
+    fireEvent.change(screen.getByLabelText("Factual notes (optional)"), { target: { value: "Breakfast by the lake." } });
+    fireEvent.click(screen.getByRole("button", { name: "Save record" }));
+
+    const task = await screen.findByRole("button", { name: "Change Camp breakfast" });
+    expect(task).toBeDisabled();
+    expect(within(task).getByText("Saving…")).toBeInTheDocument();
+    expect(screen.getByText("100%")).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+
+    await act(async () => resolve({ ok: false, error: "The day changed. Try again." }));
+    expect(await screen.findByText("The day changed. Try again.")).toBeInTheDocument();
+    expect(screen.getByLabelText("Factual notes (optional)")).toHaveValue("Breakfast by the lake.");
+    expect(screen.getByText(`${data.completion.percent}%`)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save record" })).toBeEnabled();
+  });
+
+  it("replaces a pending task with the saved record without waiting for a successful refetch", async () => {
+    let resolve!: (result: Awaited<ReturnType<typeof createCareEntryAction>>) => void;
+    vi.mocked(createCareEntryAction).mockReturnValue(new Promise((done) => { resolve = done; }));
+    const { data, queryClient } = renderDashboard("open", true);
+    vi.mocked(fetchDashboard).mockRejectedValue(new Error("Refresh unavailable"));
+    fireEvent.click(screen.getByRole("button", { name: "Record Camp breakfast" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save record" }));
+    await waitFor(() => expect(createCareEntryAction).toHaveBeenCalled());
+    const record = { ...createSeedState(true).careEntries[0], id: "saved_camp", taskLabel: "Camp breakfast", arrangementTaskId: "arrangement_task", currentRevisionId: "server_revision" };
+    await act(async () => resolve({ ok: true, data: { id: record.id, record } }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Change Camp breakfast" })).toBeEnabled());
+    expect(queryClient.getQueryData<DashboardData>(["dashboard", data.date])?.tasks[0].entry?.id).toBe("saved_camp");
+    expect(screen.getByText("100%")).toBeInTheDocument();
   });
 });

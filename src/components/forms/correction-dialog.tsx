@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useRecordMutation } from "@family-daybook/api-client/record-saving";
+import { textPreview } from "@/lib/record-previews";
+import { useQueryClient } from "@tanstack/react-query";
 import { History, Pencil } from "lucide-react";
 
 import { correctRecordAction, updateCareEntryNotesAction } from "@/app/actions";
@@ -16,17 +18,22 @@ export function CorrectionDialog({
   recordId,
   currentText,
   mode = "correct",
+  disabled = false,
 }: {
   recordType: RecordType;
   recordId: string;
   currentText: string;
   mode?: "edit" | "correct";
+  disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const [preserveDraft, setPreserveDraft] = useState(false);
   const [error, setError] = useState<string>();
   const queryClient = useQueryClient();
   const editing = mode === "edit";
-  const mutation = useMutation({
+  const mutation = useRecordMutation({
+    preview: (formData: FormData) => textPreview(recordType, recordId, formData.get("correctedText")?.toString() ?? ""),
+    onMutate: () => { setPreserveDraft(true); setOpen(false); },
     mutationFn: async (formData: FormData) => {
       setError(undefined);
       const correctedText = formData.get("correctedText")?.toString();
@@ -42,18 +49,19 @@ export function CorrectionDialog({
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries();
+      setPreserveDraft(false);
       setOpen(false);
     },
-    onError: (cause) => setError(cause.message),
+    onError: (cause) => { setError(cause.message); setOpen(true); },
   });
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button variant="ghost" size="sm" />}>
+    <Dialog open={open} onOpenChange={(next) => { if (!mutation.isPending) setOpen(next); }}>
+      <DialogTrigger render={<Button variant="ghost" size="sm" disabled={disabled || mutation.isPending} />}>
         {editing ? <Pencil className="size-3.5" /> : <History className="size-3.5" />}
         {editing ? "Edit" : "Correct"}
       </DialogTrigger>
-      <DialogContent className="sm:max-w-lg">
-        <form action={(data) => mutation.mutate(data)}>
+      <DialogContent keepMounted={preserveDraft} className="sm:max-w-lg">
+        <form onSubmit={(event) => { event.preventDefault(); if (!mutation.isPending) mutation.mutate(new FormData(event.currentTarget)); }}>
           <DialogHeader>
             <DialogTitle>{editing ? "Edit record" : "Add a correction"}</DialogTitle>
             <DialogDescription>

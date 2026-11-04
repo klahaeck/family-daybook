@@ -1,5 +1,7 @@
-import type { Appointment } from "@family-daybook/contracts";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useRecordMutation, useRecordPreview, isRecordSaving } from "@family-daybook/api-client/record-saving";
+import { appointmentPreview, pendingIdentity } from "@/record-previews";
+import type { Appointment, AppointmentInput } from "@family-daybook/contracts";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import { Text } from "react-native";
@@ -18,7 +20,8 @@ export default function AppointmentsScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const session = useDaybookSession();
-  const appointments = useQuery({ queryKey: ["appointments"], queryFn: api.listAppointments });
+  const appointmentsQuery = useQuery({ queryKey: ["appointments"], queryFn: api.listAppointments });
+  const appointments = { ...appointmentsQuery, data: useRecordPreview(["appointments"], appointmentsQuery.data) };
   const settings = useQuery({ queryKey: ["settings"], queryFn: api.getSettings, enabled: Boolean(session.data?.capabilities.mutateRecords) });
   const [title, setTitle] = useState("");
   const [provider, setProvider] = useState("");
@@ -30,9 +33,7 @@ export default function AppointmentsScreen() {
   const [notes, setNotes] = useState("");
   const [childIds, setChildIds] = useState<string[]>([]);
   const [caregiverIds, setCaregiverIds] = useState<string[]>([]);
-  const create = useMutation({ mutationFn: () => {
-    if (childIds.length === 0 || caregiverIds.length === 0) throw new Error("Choose at least one child and responsible caregiver.");
-    return api.createAppointment({
+  const buildInput = (): AppointmentInput => ({
       title,
       provider: provider.trim() || undefined,
       location: location.trim() || undefined,
@@ -44,7 +45,12 @@ export default function AppointmentsScreen() {
       cancellationDetails: (status === "cancelled" || status === "rescheduled") && cancellationDetails.trim() ? cancellationDetails.trim() : undefined,
       notes: notes.trim() || undefined,
     });
-  }, onSuccess: async () => {
+  const create = useRecordMutation({
+    preview: (input: AppointmentInput) => appointmentPreview({ ...pendingIdentity(), ...input }),
+    savedId: (record) => record.id,
+    confirm: (record) => appointmentPreview(record),
+    mutationFn: (input: AppointmentInput) => api.createAppointment(input),
+    onSuccess: async () => {
     setTitle("");
     setProvider("");
     setLocation("");
@@ -73,10 +79,10 @@ export default function AppointmentsScreen() {
         {settings.data?.caregivers.filter((item) => item.active).map((caregiver) => <ChoiceRow key={caregiver.id} label={caregiver.displayName} selected={caregiverIds.includes(caregiver.id)} onPress={() => setCaregiverIds((selected) => selected.includes(caregiver.id) ? selected.filter((id) => id !== caregiver.id) : [...selected, caregiver.id])} />)}
         <ScreenState loading={settings.isPending} error={settings.error} onRetry={() => void settings.refetch()} />
         {create.error ? <Text style={{ color: colors.danger }}>{friendlyError(create.error)}</Text> : null}
-        <ActionButton label={create.isPending ? "Saving…" : "Add appointment"} disabled={create.isPending || title.trim().length < 2 || childIds.length === 0 || caregiverIds.length === 0} onPress={() => create.mutate()} />
+        <ActionButton label={create.isPending ? "Saving…" : "Add appointment"} disabled={create.isPending || title.trim().length < 2 || childIds.length === 0 || caregiverIds.length === 0} onPress={() => create.mutate(buildInput())} />
       </Card> : null}
       <ScreenState loading={appointments.isPending} error={appointments.error} onRetry={() => void appointments.refetch()} empty={appointments.data?.length === 0 ? "No appointments yet." : undefined} />
-      {appointments.data?.map((item) => <Card key={item.id}><Heading>{item.title}</Heading><Body>{formatDateTime(item.scheduledAt, session.data?.workspace.timezone ?? "UTC")}</Body><Body muted>{item.status}{item.provider ? ` · ${item.provider}` : ""}</Body>{item.location ? <Body>{item.location}</Body> : null}{item.arrivedAt ? <Body>Arrived {formatDateTime(item.arrivedAt, session.data?.workspace.timezone ?? "UTC")}</Body> : null}{item.cancellationDetails ? <Body>Cancellation/rescheduling: {item.cancellationDetails}</Body> : null}<ActionButton label="View details" secondary onPress={() => router.push({ pathname: "/records/[recordType]/[id]", params: { recordType: "appointment", id: item.id } })} /></Card>)}
+      {appointments.data?.map((item) => <Card key={item.id}><Heading>{item.title}</Heading><Body>{formatDateTime(item.scheduledAt, session.data?.workspace.timezone ?? "UTC")}</Body><Body muted>{item.status}{item.provider ? ` · ${item.provider}` : ""}</Body>{item.location ? <Body>{item.location}</Body> : null}{item.arrivedAt ? <Body>Arrived {formatDateTime(item.arrivedAt, session.data?.workspace.timezone ?? "UTC")}</Body> : null}{item.cancellationDetails ? <Body>Cancellation/rescheduling: {item.cancellationDetails}</Body> : null}<ActionButton label={isRecordSaving(item) ? "Saving…" : "View details"} disabled={isRecordSaving(item)} secondary onPress={() => router.push({ pathname: "/records/[recordType]/[id]", params: { recordType: "appointment", id: item.id } })} /></Card>)}
     </Screen>
   );
 }
