@@ -2,15 +2,12 @@
 
 import { useMemo, useState } from "react";
 import {
-  Baby,
   BarChart3,
-  CalendarDays,
   ListChecks,
   ListFilter,
   UsersRound,
 } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -40,15 +37,6 @@ const segmentColors = [
 
 function formatRecordCount(count: number): string {
   return `${count} ${count === 1 ? "record" : "records"}`;
-}
-
-function formatRecordDate(value: string, timezone: string): string {
-  return new Intl.DateTimeFormat("en-US", {
-    timeZone: timezone,
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).format(new Date(value));
 }
 
 function ToggleGroup({
@@ -149,20 +137,6 @@ export function TimelineAnalytics({ data }: { data: TimelineData }) {
     ...summary.recordItems.map((item) => item.count),
   );
   const hasRecords = summary.recordCount > 0;
-  const childNames = useMemo(
-    () => new Map(data.children.map((child) => [child.id, child.displayName])),
-    [data.children],
-  );
-  const caregiverNames = useMemo(
-    () =>
-      new Map(
-        data.caregivers.map((caregiver) => [
-          caregiver.id,
-          caregiver.displayName,
-        ]),
-      ),
-    [data.caregivers],
-  );
 
   return (
     <div className="space-y-5">
@@ -175,7 +149,7 @@ export function TimelineAnalytics({ data }: { data: TimelineData }) {
           </CardTitle>
           <CardDescription>
             Toggle the completed or partial caregiving records included in the
-            charts and record list. Date filters use {data.workspace.timezone}.
+            charts. Date filters use {data.workspace.timezone}.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -382,61 +356,6 @@ export function TimelineAnalytics({ data }: { data: TimelineData }) {
               </CardContent>
             </Card>
           </div>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>
-                <h2 className="flex items-center gap-2">
-                  <ListChecks className="size-4 text-primary" /> Included records
-                </h2>
-              </CardTitle>
-              <CardDescription>
-                The records represented above, with their children and caregivers.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-3 lg:grid-cols-2">
-              {summary.records.map((record) => {
-                const recordChildren = record.childIds
-                  .map((id) => childNames.get(id))
-                  .filter(Boolean)
-                  .join(" + ");
-                const recordCaregivers = record.caregiverIds
-                  .map((id) => caregiverNames.get(id))
-                  .filter(Boolean)
-                  .join(" + ");
-                return (
-                  <article key={record.id} className="rounded-xl border bg-background/70 p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <h3 className="font-medium">{record.title}</h3>
-                      <Badge variant="secondary" className="capitalize">
-                        {record.status.replaceAll("_", " ")}
-                      </Badge>
-                    </div>
-                    <p className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
-                      <CalendarDays className="size-3.5" />
-                      {formatRecordDate(record.occurredAt, data.workspace.timezone)}
-                    </p>
-                    <div className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
-                      <p className="flex items-start gap-2">
-                        <Baby className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-                        <span>
-                          <span className="text-xs text-muted-foreground">Children</span>
-                          <span className="block">{recordChildren || "Not listed"}</span>
-                        </span>
-                      </p>
-                      <p className="flex items-start gap-2">
-                        <UsersRound className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-                        <span>
-                          <span className="text-xs text-muted-foreground">Caregivers</span>
-                          <span className="block">{recordCaregivers || "Not listed"}</span>
-                        </span>
-                      </p>
-                    </div>
-                  </article>
-                );
-              })}
-            </CardContent>
-          </Card>
         </>
       ) : (
         <Card className="border-dashed">
