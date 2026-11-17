@@ -69,11 +69,19 @@ export function summarizeReport(source: ReportSource) {
     const end = new Date(Date.parse(from) + Math.min(offset + bucketDays - 1, days - 1) * 86_400_000).toISOString().slice(0, 10);
     trend.push({ label: start === end ? start : `${start} - ${end}`, count: 0 });
   }
+  const boundaryDates = new Map<string, number>();
   for (const event of events) {
     const date = reportLocalDate(event.at, source.workspace.timezone);
     const index = Math.floor((Date.parse(date) - Date.parse(from)) / 86_400_000 / bucketDays);
-    if (trend[index]) trend[index].count++;
+    if (index >= 0 && date <= to && trend[index]) trend[index].count++;
+    else boundaryDates.set(date, (boundaryDates.get(date) ?? 0) + 1);
   }
+  // Existing snapshots select timestamps by their UTC date. Keep those records
+  // visible when their workspace-local date falls just outside the selection.
+  for (const [date, count] of boundaryDates) {
+    trend.push({ label: `${date} (local boundary)`, count });
+  }
+  trend.sort((a, b) => a.label.localeCompare(b.label));
   const counts = new Map<string, number>();
   for (const entry of source.entries) counts.set(entry.taskLabel, (counts.get(entry.taskLabel) ?? 0) + 1);
   const activities = [...counts].map(([label, count]) => ({ label, count }))

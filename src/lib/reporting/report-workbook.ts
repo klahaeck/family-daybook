@@ -61,6 +61,7 @@ export async function generateReportWorkbook(source: ReportSource): Promise<Uint
     ["Special days", "Plans and assigned responsibilities only; they do not establish that care occurred. Excluded from event chart totals."],
     ["Filters", JSON.stringify(source.snapshot.filters)],
     ["Timestamps", "Local date/time is shown alongside the original timestamp. Recorded At preserves when information was entered."],
+    ["Long details", "Values exceeding Excel's cell text limit continue in adjacent columns. Join the original and continued columns in order to reconstruct the complete value."],
     ["Evidence", "Original attachments, revision metadata, and checksums are included in the surrounding evidence ZIP."],
   ]);
   guide.getColumn(2).alignment = { wrapText: true, vertical: "top" };
@@ -80,14 +81,26 @@ export async function generateReportWorkbook(source: ReportSource): Promise<Uint
     "Event Type", "Event", "Children", "Child IDs", "Caregivers / Assigned", "Caregiver IDs",
     "Status", "Recorded At", "Event ID", "Revision ID", ...detailColumns,
   ];
+  const allRows = events.map((event) => eventRow(source, event));
+  const cellLimit = 32_000;
+  const widths = headers.map((_, index) => allRows.reduce((max, row) =>
+    Math.max(max, typeof row[index] === "string" ? Math.ceil((row[index] as string).length / cellLimit) : 1), 1,
+  ));
+  const expandedHeaders = headers.flatMap((header, index) =>
+    Array.from({ length: widths[index] }, (_, part) => part === 0 ? header : `${header} (continued ${part + 1})`),
+  );
   for (const sheet of sheets) {
     const worksheet = workbook.addWorksheet(sheet.name, { views: [{ state: "frozen", ySplit: 1 }] });
-    worksheet.columns = headers.map((header) => ({ header, width: header === "Event" || header === "Children" ? 30 : 24 }));
+    worksheet.columns = expandedHeaders.map((header) => ({ header, width: header === "Event" || header === "Children" ? 30 : 24 }));
     for (const event of sheet.events) {
       // Plain string values, never formula objects, keep user-entered text inert in Excel.
-      worksheet.addRow(eventRow(source, event));
+      worksheet.addRow(eventRow(source, event).flatMap((value, index) =>
+        Array.from({ length: widths[index] }, (_, part) =>
+          typeof value === "string" ? value.slice(part * cellLimit, (part + 1) * cellLimit) : value,
+        ),
+      ));
     }
-    worksheet.autoFilter = { from: { row: 1, column: 1 }, to: { row: Math.max(1, worksheet.rowCount), column: headers.length } };
+    worksheet.autoFilter = { from: { row: 1, column: 1 }, to: { row: Math.max(1, worksheet.rowCount), column: expandedHeaders.length } };
     worksheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
     worksheet.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF173F35" } };
     worksheet.getRow(1).height = 30;

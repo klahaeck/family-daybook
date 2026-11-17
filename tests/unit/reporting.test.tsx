@@ -58,6 +58,14 @@ describe("report overview", () => {
     expect(reportEvents(source())).toHaveLength(5);
   });
 
+  it("keeps local boundary events visible without changing snapshot membership", () => {
+    const input = source();
+    input.entries[0].occurredAt = "2026-06-01T01:00:00Z";
+    const summary = summarizeReport(input);
+    expect(summary.trend.find((bucket) => bucket.label === "2026-05-31 (local boundary)")?.count).toBe(1);
+    expect(summary.trend.reduce((sum, bucket) => sum + bucket.count, 0)).toBe(summary.totalEvents);
+  });
+
   it("bounds trend buckets for long reports and preserves counts", () => {
     const input = source();
     input.snapshot.filters.to = "2027-06-01";
@@ -103,6 +111,21 @@ describe("report workbook", () => {
     expect(shared.getCell(14).type).toBe(ExcelJS.ValueType.String);
     expect(shared.getCell(15).value).toBe(0);
     expect(shared.getCell(17).value).toBe(false);
+  });
+
+  it("preserves long special-day plans across continuation columns", async () => {
+    const input = source();
+    input.arrangements[0].tasks = Array.from({ length: 500 }, (_, index) => ({
+      id: `task-${index}`, label: "A".repeat(100), childId: "a", taskKey: "custom", suggestedTime: "12:00", sortOrder: index,
+    }));
+    const book = await workbook(input);
+    const sheet = book.getWorksheet("All Events")!;
+    const headers = sheet.getRow(1).values as string[];
+    const columns = headers.flatMap((header, index) => header === "tasks" || header.startsWith("tasks (continued") ? [index] : []);
+    expect(columns.length).toBeGreaterThan(1);
+    const row = sheet.getRows(2, 5)!.find((item) => item.getCell(12).value === "plan")!;
+    expect(columns.map((index) => row.getCell(index).value).join("")).toBe(JSON.stringify(input.arrangements[0].tasks));
+    for (const index of columns) expect(String(row.getCell(index).value).length).toBeLessThanOrEqual(32_000);
   });
 
   it("uses only selected child tabs and retains empty headers", async () => {

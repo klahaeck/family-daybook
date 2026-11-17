@@ -66,7 +66,7 @@ export function ReportDocument({ source }: { source: ReportSource }) {
         <Text>Counts are descriptive, not parenting scores. Routine items and special days come only from finalized daily logs. Appointments and incidents use the selected date and child filters.</Text>
         <Text>Each event is counted once in overall totals. Special-day plans are separate from logged events. No record does not mean no care occurred.</Text>
       </View>
-      <Chart title="Logged events over time" rows={summary.trend} note={`Routine items, appointments and incidents; ${summary.bucketDays === 1 ? "daily" : `${summary.bucketDays}-day`} buckets in ${timezone}.`} />
+      <Chart title="Logged events over time" rows={summary.trend} note={`Routine items, appointments and incidents; ${summary.bucketDays === 1 ? "daily" : `${summary.bucketDays}-day`} buckets in ${timezone}. Local boundary rows retain snapshot events falling outside the selected local dates.`} />
       <Chart title="Events by child" rows={summary.children} note="Shared events count once for each affected child. Do not sum child totals to obtain overall totals." />
       <Chart title="Routine item status" rows={summary.statuses} note={source.snapshot.filters.includeCare ? "All included routine items, including missed and not applicable records." : "Routine items were excluded by the report filters."} />
       <Chart title="Routine activities" rows={summary.activities.slice(0, 12)} note="Counts by activity, across all recorded statuses. Top 12 shown; all details are in the workbook." />
