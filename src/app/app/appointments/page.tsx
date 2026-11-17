@@ -1,4 +1,4 @@
-import { AppShell, PageHeading } from "@/components/app/app-shell";
+import { PageHeading } from "@/components/app/app-shell";
 import { AppointmentsView } from "@/components/app/appointments-view";
 import { getPageRequestContext, getRepository } from "@/lib/repository";
 
@@ -12,7 +12,7 @@ export default async function AppointmentsPage() {
     repository.getSettings(context),
   ]);
   return (
-    <AppShell workspace={context.workspace} member={context.member}>
+    <>
       <PageHeading
         eyebrow="Scheduled care"
         title="Appointments"
@@ -24,6 +24,6 @@ export default async function AppointmentsPage() {
         caregivers={settings.caregivers}
         workspace={context.workspace}
       />
-    </AppShell>
+    </>
   );
 }

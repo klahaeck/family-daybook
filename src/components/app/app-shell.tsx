@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
+import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
 import {
   CalendarDays,
@@ -41,6 +41,15 @@ const nav = [
   { href: "/app/settings", label: "Settings", icon: Settings, ownerOnly: true },
 ];
 
+function NavigationPending() {
+  const { pending } = useLinkStatus();
+  return (
+    <span role="status" className={cn("inline-block size-2 shrink-0 rounded-full bg-current motion-safe:animate-pulse", !pending && "invisible")}>
+      {pending && <span className="sr-only">Loading page...</span>}
+    </span>
+  );
+}
+
 function Navigation({ onNavigate, role }: { onNavigate?: () => void; role: Member["role"] }) {
   const pathname = usePathname();
   return (
@@ -52,6 +61,7 @@ function Navigation({ onNavigate, role }: { onNavigate?: () => void; role: Membe
             key={item.href}
             href={item.href}
             onClick={onNavigate}
+            aria-current={active ? "page" : undefined}
             className={cn(
               "flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm font-medium transition",
               active
@@ -60,7 +70,8 @@ function Navigation({ onNavigate, role }: { onNavigate?: () => void; role: Membe
             )}
           >
             <item.icon className="size-4" aria-hidden="true" />
-            {item.label}
+            <span className="flex-1">{item.label}</span>
+            <NavigationPending />
           </Link>
         );
       })}
@@ -110,6 +121,7 @@ export function AppShell({
   member: Member;
 }) {
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
+  const pathname = usePathname();
 
   return (
     <div className="min-h-screen w-full min-w-0 bg-[radial-gradient(circle_at_top_left,var(--surface-glow),transparent_36rem)]">
@@ -237,8 +249,11 @@ export function AppShell({
 
       <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t bg-background/95 px-2 pb-[max(0.4rem,env(safe-area-inset-bottom))] pt-2 backdrop-blur lg:hidden" aria-label="Mobile primary">
         {nav.slice(0, 5).map((item) => (
-          <Link key={item.href} href={item.href} className="flex min-h-12 flex-col items-center justify-center gap-1 text-[10px] font-medium text-muted-foreground">
-            <item.icon className="size-4" />
+          <Link key={item.href} href={item.href} aria-current={(item.href === "/app" ? pathname === "/app" : pathname.startsWith(item.href)) ? "page" : undefined} className="flex min-h-12 flex-col items-center justify-center gap-1 text-[10px] font-medium text-muted-foreground aria-[current=page]:text-primary">
+            <span className="relative">
+                <item.icon className="size-4" aria-hidden="true" />
+                <span className="absolute -right-3 top-1"><NavigationPending /></span>
+              </span>
             {item.label}
           </Link>
         ))}

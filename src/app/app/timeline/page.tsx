@@ -1,4 +1,4 @@
-import { AppShell, PageHeading } from "@/components/app/app-shell";
+import { PageHeading } from "@/components/app/app-shell";
 import { TimelineView } from "@/components/app/timeline-view";
 import { getPageRequestContext, getRepository } from "@/lib/repository";
 
@@ -9,7 +9,7 @@ export default async function TimelinePage() {
   const context = await getPageRequestContext();
   const data = await repository.getTimeline(context);
   return (
-    <AppShell workspace={context.workspace} member={context.member}>
+    <>
       <PageHeading
         eyebrow="Review"
         title="Family timeline"
@@ -20,6 +20,6 @@ export default async function TimelinePage() {
         canManage={context.member.role === "owner"}
         canPurge={context.member.role === "owner" && context.workspace.hardDeleteEnabled}
       />
-    </AppShell>
+    </>
   );
 }

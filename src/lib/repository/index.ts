@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 
 import {
   assertWorkspaceBillingAccess,
@@ -44,7 +45,8 @@ export async function getRequestContextForIdentity(
   return context;
 }
 
-export async function getPageRequestContext(): Promise<RequestContext> {
+// Deduplicate layout/page access checks per server render, never across users.
+export const getPageRequestContext = cache(async (): Promise<RequestContext> => {
   try {
     return await getRequestContext();
   } catch (error) {
@@ -54,7 +56,7 @@ export async function getPageRequestContext(): Promise<RequestContext> {
     }
     throw error;
   }
-}
+});
 
 export function resetRepositoryForTests(): void {
   repository = undefined;
