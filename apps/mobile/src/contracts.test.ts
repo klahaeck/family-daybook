@@ -3,10 +3,31 @@ import {
   appointmentInputSchema,
   appointmentSchema,
   daySchema,
+  listAppointmentsSchema,
   listIncidentsSchema,
+  listSpecialDaysSchema,
+  specialDayDetailSchema,
+  specialDayUpdateInputSchema,
 } from "@family-daybook/contracts";
 
 describe("mobile API contracts", () => {
+  it("normalizes nullable special-day notes in lists and details", () => {
+    const day = {
+      id: "special_1", localDate: "2026-11-17", title: "School holiday",
+      status: "active", note: null, currentRevisionId: "revision_1",
+    };
+    const result = listSpecialDaysSchema.parse({ children: [], caregivers: [], days: [day] });
+    expect(result.days[0].note).toBeUndefined();
+    const detail = specialDayDetailSchema.parse({
+      ...day, assignments: [{ childId: "child_1", caregiverIds: ["caregiver_1"] }],
+      tasks: [], recordVersion: "version_1",
+    });
+    expect(detail.note).toBeUndefined();
+    expect(specialDayUpdateInputSchema.safeParse({
+      ...detail, note: null,
+    }).success).toBe(false);
+  });
+
   it("retains arrival and cancellation details returned for appointments", () => {
     const appointment = appointmentSchema.parse({
       id: "appointment_1",
@@ -22,6 +43,32 @@ describe("mobile API contracts", () => {
 
     expect(appointment.arrivedAt).toBe("2026-09-16T14:55:00.000Z");
     expect(appointment.cancellationDetails).toBe("Moved to Friday at the provider's request.");
+  });
+
+  it("normalizes null arrival times in existing appointments", () => {
+    const appointments = listAppointmentsSchema.parse([{
+      id: "appointment_1",
+      title: "Pediatrician",
+      childIds: ["child_1"],
+      scheduledAt: "2026-09-16T15:00:00.000Z",
+      responsibleCaregiverIds: ["caregiver_1"],
+      status: "scheduled",
+      arrivedAt: null,
+      currentRevisionId: "revision_1",
+    }]);
+
+    expect(appointments[0].arrivedAt).toBeUndefined();
+  });
+
+  it("rejects null arrival times when creating an appointment", () => {
+    expect(appointmentInputSchema.safeParse({
+      title: "Pediatrician",
+      childIds: ["child_1"],
+      scheduledAt: "2026-09-16T15:00:00.000Z",
+      responsibleCaregiverIds: ["caregiver_1"],
+      status: "scheduled",
+      arrivedAt: null,
+    }).success).toBe(false);
   });
 
   it("accepts those fields when creating an appointment", () => {

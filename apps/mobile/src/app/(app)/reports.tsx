@@ -1,3 +1,4 @@
+import { FormSheet } from "@/components/form-sheet";
 import { File, Paths } from "expo-file-system";
 import * as Sharing from "expo-sharing";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -16,12 +17,13 @@ export default function ReportsScreen() {
   const session = useDaybookSession();
   const reports = useQuery({ queryKey: ["reports"], queryFn: api.listReports, refetchInterval: (query) => query.state.data?.some((item) => item.status === "pending") ? 3000 : false });
   const today = session.data?.currentLocalDate ?? todayLocalDate();
+  const [formOpen, setFormOpen] = useState(false);
   const [from, setFrom] = useState(shiftDate(today, -7));
   const [to, setTo] = useState(today);
   const [includeCare, setIncludeCare] = useState(true);
   const [includeAppointments, setIncludeAppointments] = useState(true);
   const [includeIncidents, setIncludeIncidents] = useState(true);
-  const create = useMutation({ mutationFn: () => api.createReport({ from, to, childIds: [], includeCare, includeAppointments, includeIncidents }), onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ["reports"] }); } });
+  const create = useMutation({ mutationFn: () => api.createReport({ from, to, childIds: [], includeCare, includeAppointments, includeIncidents }), onSuccess: async () => { setFormOpen(false); await queryClient.invalidateQueries({ queryKey: ["reports"] }); } });
   const share = useMutation({ mutationFn: async ({ id, format }: { id: string; format: "pdf" | "zip" }) => {
     const file = new File(Paths.cache, `family-daybook-${id}.${format}`);
     if (file.exists) file.delete();
@@ -33,16 +35,20 @@ export default function ReportsScreen() {
   } });
   return (
     <Screen title="Reports" subtitle="Generate fixed snapshots for a date range, then download or share them.">
-      {session.data?.capabilities.mutateRecords ? <Card>
-        <Heading>New report</Heading>
-        <Field label="From (YYYY-MM-DD)" value={from} onChangeText={setFrom} autoCapitalize="none" />
-        <Field label="To (YYYY-MM-DD)" value={to} onChangeText={setTo} autoCapitalize="none" />
-        <ChoiceRow label="Care records" selected={includeCare} onPress={() => setIncludeCare(!includeCare)} />
-        <ChoiceRow label="Appointments" selected={includeAppointments} onPress={() => setIncludeAppointments(!includeAppointments)} />
-        <ChoiceRow label="Incidents" selected={includeIncidents} onPress={() => setIncludeIncidents(!includeIncidents)} />
-        {create.error ? <Text style={{ color: colors.danger }}>{friendlyError(create.error)}</Text> : null}
-        <ActionButton label={create.isPending ? "Starting…" : "Generate report"} disabled={create.isPending} onPress={() => create.mutate()} />
-      </Card> : null}
+      {session.data?.capabilities.mutateRecords ? <>
+        <View style={{ flexDirection: "row", justifyContent: "flex-end" }}>
+          <ActionButton compact icon="add" label="New report" disabled={create.isPending} onPress={() => { create.reset(); setFormOpen(true); }} />
+        </View>
+        <FormSheet title="New report" visible={formOpen && !create.isPending} onClose={() => setFormOpen(false)}>
+          <Field label="From (YYYY-MM-DD)" value={from} onChangeText={setFrom} autoCapitalize="none" />
+          <Field label="To (YYYY-MM-DD)" value={to} onChangeText={setTo} autoCapitalize="none" />
+          <ChoiceRow label="Care records" selected={includeCare} onPress={() => setIncludeCare(!includeCare)} />
+          <ChoiceRow label="Appointments" selected={includeAppointments} onPress={() => setIncludeAppointments(!includeAppointments)} />
+          <ChoiceRow label="Incidents" selected={includeIncidents} onPress={() => setIncludeIncidents(!includeIncidents)} />
+          {create.error ? <Text style={{ color: colors.danger }}>{friendlyError(create.error)}</Text> : null}
+          <ActionButton label={create.isPending ? "Starting…" : "Generate report"} disabled={create.isPending} onPress={() => create.mutate()} />
+        </FormSheet>
+      </> : null}
       <ScreenState loading={reports.isPending} error={reports.error} onRetry={() => void reports.refetch()} empty={reports.data?.length === 0 ? "No reports generated." : undefined} />
       {reports.data?.map((report) => <Card key={report.id}>
         <Heading>{report.filters.from} – {report.filters.to}</Heading>
