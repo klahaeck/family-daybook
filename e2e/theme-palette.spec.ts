@@ -11,7 +11,7 @@ for (const mode of ["light", "dark"] as const) {
       await expect(page.locator("html")).toHaveClass(new RegExp(`\\b${mode}\\b`));
       await expect(page.locator("body")).toHaveCSS(
         "background-color",
-        mode === "light" ? "rgb(250, 249, 247)" : "rgb(41, 42, 40)",
+        mode === "light" ? "rgb(247, 249, 251)" : "rgb(37, 45, 52)",
       );
       const violations = await new AxeBuilder({ page }).withRules(["color-contrast"]).analyze();
       expect(violations.violations, `${mode} ${path} text contrast`).toEqual([]);
