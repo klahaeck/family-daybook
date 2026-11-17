@@ -3,18 +3,19 @@ import { INCIDENT_LABELS, RECORD_DISCLAIMER } from "@/lib/domain/constants";
 import { formatDateTime } from "@/lib/domain/dates";
 import type { ReportSource } from "@/lib/repository/repository";
 import { reportNames, summarizeReport } from "./report-data";
+import { reportAttachmentPath } from "./attachment-path";
 
 const styles = StyleSheet.create({
   page: { paddingTop: 42, paddingHorizontal: 44, paddingBottom: 50, fontFamily: "Helvetica", fontSize: 9, color: "#1e2a26", lineHeight: 1.5 },
-  title: { fontSize: 24, fontFamily: "Helvetica-Bold", color: "#173f35", marginBottom: 8 },
-  subtitle: { fontSize: 11, color: "#52635d", marginBottom: 16 },
-  heading: { fontSize: 14, fontFamily: "Helvetica-Bold", color: "#173f35", marginTop: 20, marginBottom: 8 },
+  title: { fontSize: 24, lineHeight: 1.25, fontFamily: "Helvetica-Bold", color: "#173f35", marginBottom: 8 },
+  subtitle: { fontSize: 11, lineHeight: 1.5, color: "#52635d", marginBottom: 16 },
+  heading: { fontSize: 14, lineHeight: 1.4, fontFamily: "Helvetica-Bold", color: "#173f35", marginTop: 20, marginBottom: 8 },
   row: { borderTopWidth: 1, borderTopColor: "#dce6e1", paddingVertical: 8 },
-  rowTitle: { fontSize: 10, fontFamily: "Helvetica-Bold", marginBottom: 2 },
+  rowTitle: { fontSize: 10, lineHeight: 1.5, fontFamily: "Helvetica-Bold", marginBottom: 2 },
   meta: { color: "#687771", fontSize: 8, marginBottom: 4 },
   summary: { flexDirection: "row", gap: 8, marginTop: 16, marginBottom: 10 },
   card: { flexGrow: 1, flexBasis: 0, borderWidth: 1, borderColor: "#dce6e1", borderRadius: 4, padding: 10 },
-  number: { fontSize: 20, fontFamily: "Helvetica-Bold", color: "#173f35" },
+  number: { fontSize: 20, lineHeight: 1.3, fontFamily: "Helvetica-Bold", color: "#173f35" },
   notice: { backgroundColor: "#f3f7f5", padding: 10, borderRadius: 4, color: "#52635d", marginTop: 12 },
   chartRow: { flexDirection: "row", alignItems: "center", marginBottom: 6, gap: 8 },
   chartLabel: { width: 162, fontSize: 8 },
@@ -68,10 +69,18 @@ export function ReportDocument({ source }: { source: ReportSource }) {
       </View>
       <Chart title="Logged events over time" rows={summary.trend} note={`Routine items, appointments and incidents; ${summary.bucketDays === 1 ? "daily" : `${summary.bucketDays}-day`} buckets in ${timezone}. Local boundary rows retain snapshot events falling outside the selected local dates.`} />
       <Chart title="Events by child" rows={summary.children} note="Shared events count once for each affected child. Do not sum child totals to obtain overall totals." />
+      <Chart title="Records by caregiver" rows={summary.caregivers} note={`Completed or partial routine care records only. Included records: ${summary.careRecordCount}. Shared records count once per caregiver, not per child. Excludes appointments, incidents and special-day plans; totals are not parenting scores.`} />
+      {summary.caregivers.filter((caregiver) => caregiver.count > 0).map((caregiver) => <View key={caregiver.id} style={styles.row}>
+        <Text style={styles.rowTitle} minPresenceAhead={40}>{caregiver.label} | Care records: {caregiver.count}</Text>
+        {caregiver.recordItems.map((item) => <View key={item.label} style={styles.chartRow} wrap={false}>
+          <Text style={[styles.chartLabel, { flexGrow: 1 }]}>{item.label}</Text>
+          <Text style={styles.count}>{item.count}</Text>
+        </View>)}
+      </View>)}
       <Chart title="Routine item status" rows={summary.statuses} note={source.snapshot.filters.includeCare ? "All included routine items, including missed and not applicable records." : "Routine items were excluded by the report filters."} />
       <Chart title="Routine activities" rows={summary.activities.slice(0, 12)} note="Counts by activity, across all recorded statuses. Top 12 shown; all details are in the workbook." />
       <View style={styles.notice}>
-        <Text>The evidence ZIP contains daily-log.xlsx: All Events lists each record once, and child tabs show the same records filtered per child. It includes timestamps, statuses, notes and record IDs, plus special-day plans clearly labeled as plans.</Text>
+        <Text>The evidence ZIP contains daily-log.xlsx: All Events lists each record once, and child tabs show the same records filtered per child. It includes timestamps, statuses and notes, plus special-day plans clearly labeled as plans.</Text>
       </View>
       <Text style={styles.heading} minPresenceAhead={90}>Incidents</Text>
       {!source.snapshot.filters.includeIncidents ? <Text>Incidents were excluded by the report filters.</Text> : source.incidents.length === 0 ? <Text>No incidents recorded in this selection.</Text> : source.incidents.map((incident) => <View key={incident.id} style={styles.row}>
@@ -80,6 +89,8 @@ export function ReportDocument({ source }: { source: ReportSource }) {
         <Text>Observed facts: {incident.observations}</Text>
         {incident.immediateActions && <Text>Immediate actions: {incident.immediateActions}</Text>}
         {incident.outcome && <Text>Outcome: {incident.outcome}</Text>}
+        {source.attachments.filter((attachment) => attachment.recordType === "incident" && attachment.recordId === incident.id)
+          .map((attachment) => <Text key={attachment.id}>Supporting file in evidence ZIP: {reportAttachmentPath(attachment)}</Text>)}
       </View>)}
       <Text style={styles.heading} minPresenceAhead={90}>Special days</Text>
       <Text style={styles.meta}>Saved plans and responsibility assignments only. These do not establish that planned care occurred.</Text>

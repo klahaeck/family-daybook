@@ -1,4 +1,5 @@
 import { CARE_STATUS_LABELS, INCIDENT_LABELS } from "@/lib/domain/constants";
+import { careStatusRecordsProvidedCare } from "@/lib/domain/care-entry-rules";
 import { localDateInTimezone } from "@/lib/domain/dates";
 import type { ReportSource } from "@/lib/repository/repository";
 
@@ -84,10 +85,27 @@ export function summarizeReport(source: ReportSource) {
   trend.sort((a, b) => a.label.localeCompare(b.label));
   const counts = new Map<string, number>();
   for (const entry of source.entries) counts.set(entry.taskLabel, (counts.get(entry.taskLabel) ?? 0) + 1);
+  const careRecords = source.snapshot.filters.includeCare
+    ? source.entries.filter((entry) => careStatusRecordsProvidedCare(entry.status))
+    : [];
+  const caregivers = source.caregivers.map((caregiver) => {
+    const records = careRecords.filter((entry) => entry.caregiverIds.includes(caregiver.id));
+    const items = new Map<string, number>();
+    for (const record of records) items.set(record.taskLabel, (items.get(record.taskLabel) ?? 0) + 1);
+    return {
+      id: caregiver.id,
+      label: caregiver.displayName,
+      count: records.length,
+      recordItems: [...items].map(([label, count]) => ({ label, count }))
+        .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label)),
+    };
+  });
   const activities = [...counts].map(([label, count]) => ({ label, count }))
     .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
   return {
     totalEvents: events.length,
+    caregivers,
+    careRecordCount: careRecords.length,
     trend,
     bucketDays,
     statuses: Object.entries(CARE_STATUS_LABELS).map(([status, label]) => ({

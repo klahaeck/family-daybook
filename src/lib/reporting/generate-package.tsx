@@ -15,12 +15,9 @@ import {
 } from "@/lib/storage/private-files";
 import type { ReportSource } from "@/lib/repository/repository";
 import { reportArtifactPathnames } from "./artifact-paths";
+import { reportAttachmentPath } from "./attachment-path";
 import { ReportDocument } from "./report-document";
 import { generateReportWorkbook, REPORT_WORKBOOK_NAME } from "./report-workbook";
-
-function safeName(name: string) {
-  return name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 120);
-}
 
 export interface GeneratedEvidencePackage {
   manifestHash: string;
@@ -197,10 +194,7 @@ export async function generateEvidencePackage(
   };
   const manifestJson = canonicalJson(manifest);
   const manifestHash = sha256(manifestJson);
-  const attachmentPathnames = source.attachments.map(
-    (attachment) =>
-      `attachments/${attachment.id}-${safeName(attachment.originalName)}`,
-  );
+  const attachmentPathnames = source.attachments.map(reportAttachmentPath);
   const paths = reportArtifactPathnames(
     source.workspace.id,
     source.snapshot.id,
