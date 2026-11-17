@@ -173,7 +173,7 @@ export default async function MarketingHome() {
         <AgentAccessFeature />
 
         <section id="security" className="scroll-mt-32 px-4 py-20 sm:px-6 sm:py-28 lg:px-8">
-          <div className={cn("mx-auto max-w-7xl overflow-hidden rounded-[2.25rem] text-primary-foreground shadow-[0_28px_80px_rgba(23,72,60,0.18)]", styles.securityPanel)}>
+          <div className={cn("mx-auto max-w-7xl overflow-hidden rounded-[2.25rem] text-primary-foreground shadow-[0_28px_80px_rgba(50,50,47,0.18)]", styles.securityPanel)}>
             <div className="grid gap-12 px-6 py-10 sm:px-10 sm:py-14 lg:grid-cols-[0.78fr_1.22fr] lg:px-14 lg:py-16">
               <div>
                 <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-semibold">
@@ -181,7 +181,7 @@ export default async function MarketingHome() {
                   Privacy is part of the structure
                 </div>
                 <h2 className="mt-6 text-balance text-4xl font-semibold tracking-tight sm:text-5xl">Family details deserve thoughtful boundaries.</h2>
-                <p className="mt-5 max-w-xl text-lg leading-8 text-primary-foreground/75">Family Daybook combines private storage with repeated membership checks, visible revision history, and intentional sharing controls.</p>
+                <p className="mt-5 max-w-xl text-lg leading-8 text-primary-foreground/90">Family Daybook combines private storage with repeated membership checks, visible revision history, and intentional sharing controls.</p>
                 <Link href="/privacy" className="mt-8 inline-flex items-center gap-2 text-sm font-semibold underline decoration-white/30 underline-offset-4 hover:decoration-white">
                   Read our privacy approach
                   <ArrowRight className="size-4" aria-hidden="true" />
@@ -194,9 +194,9 @@ export default async function MarketingHome() {
               <div className="grid gap-3 sm:grid-cols-2">
                 {securityPoints.map((point) => (
                   <article key={point.title} className="rounded-2xl border border-white/12 bg-white/[0.07] p-5">
-                    <point.icon className="size-5 text-[#c9dfcf]" aria-hidden="true" />
+                    <point.icon className="size-5 text-primary-foreground/85" aria-hidden="true" />
                     <h3 className="mt-5 font-heading text-lg font-semibold">{point.title}</h3>
-                    <p className="mt-2 text-sm leading-6 text-primary-foreground/70">{point.description}</p>
+                    <p className="mt-2 text-sm leading-6 text-primary-foreground/90">{point.description}</p>
                   </article>
                 ))}
               </div>

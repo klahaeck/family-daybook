@@ -20,16 +20,16 @@ function DaybookMark() {
     >
       <path
         d="M17.1 31.5h27.4c21 0 37.6 14 37.6 31.7v86c-14.5-10.8-35.4-15.6-64.4-15.6-6 0-9.7-3.8-9.7-9.7V41.2c0-5.9 3.8-9.7 9.1-9.7Z"
-        fill="#B4CDBA"
+        fill="#d9bbb7"
       />
       <path
         d="M86.4 63.2c0-17.7 16.7-31.7 37.6-31.7h26.9c5.9 0 9.1 3.8 9.1 9.7v82.7c0 5.9-3.8 9.7-9.1 9.7-29 0-50 4.8-64.5 15.6v-86Z"
-        fill="#17483C"
+        fill="#705459"
       />
-      <circle cx="140.1" cy="53" fill="#B8D0BD" r="7.8" />
+      <circle cx="140.1" cy="53" fill="#e4cfca" r="7.8" />
       <path
         d="M84.3 95.5c-4.9-7.6-10.2-10.8-15.6-10.8-8.1 0-14.5 5.9-14.5 14 0 10.2 7.5 17.7 14.5 24.7l15.6 15 15-15c7.5-7 14.5-14.5 14.5-24.7 0-8.1-6.4-14-14.5-14-5.4 0-10.2 3.2-15 10.8Z"
-        fill="#F7FAF8"
+        fill="#fbfaf8"
       />
     </svg>
   );
@@ -40,8 +40,8 @@ export function createSocialImage() {
     <div
       style={{
         alignItems: "center",
-        background: "#f7faf8",
-        color: "#17483c",
+        background: "#fbfaf8",
+        color: "#705459",
         display: "flex",
         height: "100%",
         justifyContent: "center",
@@ -53,7 +53,7 @@ export function createSocialImage() {
     >
       <div
         style={{
-          background: "#dfece2",
+          background: "#f1e9e7",
           borderRadius: "999px",
           display: "flex",
           height: "420px",
@@ -65,7 +65,7 @@ export function createSocialImage() {
       />
       <div
         style={{
-          background: "#edf4ee",
+          background: "#f5f4f1",
           borderRadius: "999px",
           bottom: "-180px",
           display: "flex",
@@ -78,7 +78,7 @@ export function createSocialImage() {
       <div
         style={{
           backgroundImage:
-            "repeating-linear-gradient(to bottom, transparent 0, transparent 47px, #dce8df 48px)",
+            "repeating-linear-gradient(to bottom, transparent 0, transparent 47px, #e9e3e1 48px)",
           display: "flex",
           height: "100%",
           left: 0,
@@ -92,9 +92,9 @@ export function createSocialImage() {
         style={{
           alignItems: "stretch",
           background: "rgba(255, 255, 255, 0.92)",
-          border: "1px solid #d7e5da",
+          border: "1px solid #dcdad5",
           borderRadius: "34px",
-          boxShadow: "0 24px 70px rgba(23, 72, 60, 0.12)",
+          boxShadow: "0 24px 70px rgba(60, 45, 47, 0.12)",
           display: "flex",
           height: "100%",
           overflow: "hidden",
@@ -105,7 +105,7 @@ export function createSocialImage() {
         <div
           style={{
             alignItems: "center",
-            background: "#e8f1ea",
+            background: "#f3ebea",
             display: "flex",
             justifyContent: "center",
             width: "34%",
@@ -115,9 +115,9 @@ export function createSocialImage() {
             style={{
               alignItems: "center",
               background: "#ffffff",
-              border: "1px solid #d7e5da",
+              border: "1px solid #dcdad5",
               borderRadius: "32px",
-              boxShadow: "0 16px 36px rgba(23, 72, 60, 0.1)",
+              boxShadow: "0 16px 36px rgba(60, 45, 47, 0.1)",
               display: "flex",
               height: "210px",
               justifyContent: "center",
@@ -138,7 +138,7 @@ export function createSocialImage() {
         >
           <div
             style={{
-              color: "#547367",
+              color: "#62615c",
               display: "flex",
               fontSize: "20px",
               fontWeight: 700,
@@ -163,7 +163,7 @@ export function createSocialImage() {
           </div>
           <div
             style={{
-              color: "#51665f",
+              color: "#62615c",
               display: "flex",
               fontSize: "29px",
               lineHeight: 1.35,
@@ -176,7 +176,7 @@ export function createSocialImage() {
           <div
             style={{
               alignItems: "center",
-              color: "#547367",
+              color: "#62615c",
               display: "flex",
               fontSize: "19px",
               marginTop: "36px",
@@ -184,7 +184,7 @@ export function createSocialImage() {
           >
             <div
               style={{
-                background: "#8fb49a",
+                background: "#c19a96",
                 borderRadius: "999px",
                 display: "flex",
                 height: "9px",
