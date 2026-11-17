@@ -252,7 +252,7 @@ export function TodayDashboard({ date, today, initialData }: { date: string; tod
           <CardContent className="p-6 sm:p-7">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="text-sm text-primary-foreground/70">
+                <p className="text-sm text-primary-foreground/90">
                   {data.specialArrangement
                     ? "Special-day recording progress"
                     : "Routine recording progress"}
@@ -270,7 +270,7 @@ export function TodayDashboard({ date, today, initialData }: { date: string; tod
               }
               className="mt-6 bg-white/15 [&_[data-slot=progress-indicator]]:bg-white"
             />
-            <p className="mt-3 text-sm text-primary-foreground/75">
+            <p className="mt-3 text-sm text-primary-foreground/90">
               {data.completion.recorded} of {data.completion.total}{" "}
               {data.specialArrangement ? "planned tasks" : "routine items"} recorded
             </p>
