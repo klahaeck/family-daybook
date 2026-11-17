@@ -119,7 +119,7 @@ export function CareEntryDialog({
         <DialogTrigger render={trigger} />
       ) : (
         <DialogTrigger render={<Button size="sm" disabled={mutation.isPending} />}>
-          <Plus className="size-4" /> Add record
+          <Plus className="size-4" /> Add custom record
         </DialogTrigger>
       )}
       <DialogContent keepMounted={mutation.preserveDraft} className="max-h-[92vh] overflow-y-auto sm:max-w-xl">
