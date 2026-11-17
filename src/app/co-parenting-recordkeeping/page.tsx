@@ -13,7 +13,6 @@ import {
   Paperclip,
   Search,
   Share2,
-  Sparkles,
   UserCheck,
 } from "lucide-react";
 
@@ -181,11 +180,7 @@ export default async function CoParentingRecordkeepingPage() {
           <div className="absolute -right-52 top-36 -z-10 size-[38rem] rounded-full bg-[var(--hero-glow)] blur-3xl" />
           <div className="mx-auto grid max-w-7xl items-center gap-14 px-4 py-16 sm:px-6 sm:py-24 lg:grid-cols-[0.94fr_1.06fr] lg:gap-16 lg:px-8 lg:py-28">
             <div>
-              <div className="inline-flex items-center gap-2 rounded-full border border-primary/15 bg-card/75 px-3 py-1.5 text-xs font-semibold text-primary shadow-sm">
-                <Sparkles className="size-3.5" aria-hidden="true" />
-                Calm co-parenting documentation
-              </div>
-              <h1 className="mt-6 max-w-3xl text-balance text-5xl font-semibold leading-[0.98] tracking-[-0.045em] text-foreground sm:text-6xl lg:text-7xl">
+              <h1 className="max-w-3xl text-balance text-5xl font-semibold leading-[0.98] tracking-[-0.045em] text-foreground sm:text-6xl lg:text-7xl">
                 A clear family timeline for co-parenting and separation
               </h1>
               <p className="mt-7 max-w-2xl text-pretty text-lg leading-8 text-muted-foreground sm:text-xl">
