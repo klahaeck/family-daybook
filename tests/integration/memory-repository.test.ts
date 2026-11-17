@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import JSZip from "jszip";
+import ExcelJS from "exceljs";
+import { sha256 } from "@/lib/domain/integrity";
 
 import { MemoryParentingRepository, resetMemoryRepository } from "@/lib/repository/memory-repository";
 import type { Identity } from "@/lib/auth/identity";
@@ -14,7 +16,7 @@ import {
   completeAttachmentUpload,
   prepareAttachmentUpload,
 } from "@/lib/storage/attachment-uploads";
-import { localDateInTimezone, shiftLocalDate } from "@/lib/domain/dates";
+import { localDateInTimezone, localDateTimeToUtc, shiftLocalDate } from "@/lib/domain/dates";
 import { createArrangementTasksForDate } from "@/lib/domain/arrangements";
 
 const identity: Identity = {
@@ -1114,6 +1116,15 @@ describe("memory repository integration", () => {
     expect(pdf?.body.length).toBeGreaterThan(500);
     expect(zip?.contentType).toBe("application/zip");
     expect(artifacts.manifestHash).toHaveLength(64);
+    const archive = await JSZip.loadAsync(zip!.body);
+    const workbookBytes = await archive.file("daily-log.xlsx")!.async("uint8array");
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(Buffer.from(workbookBytes) as never);
+    expect(workbook.getWorksheet("All Events")).toBeDefined();
+    const manifest = JSON.parse(await archive.file("manifest.json")!.async("string"));
+    expect(manifest).toMatchObject({ schemaVersion: 3, workbook: { filename: "daily-log.xlsx", sha256: sha256(workbookBytes) } });
+    expect(await archive.file("checksums.sha256")!.async("string")).toContain(`${sha256(workbookBytes)}  daily-log.xlsx`);
+    expect((await generateEvidencePackage(source!)).createdPathnames).toEqual([]);
 
     await deletePrivateFiles([artifacts.zipPathname]);
     const recovered = await generateEvidencePackage(source!);
@@ -1123,12 +1134,41 @@ describe("memory repository integration", () => {
       manifestHash: artifacts.manifestHash,
       createdPathnames: [artifacts.zipPathname],
     });
+    archive.remove("daily-log.xlsx");
+    await deletePrivateFiles([artifacts.zipPathname]);
+    await putPrivateFile(artifacts.zipPathname, await archive.generateAsync({ type: "uint8array" }), "application/zip");
+    await expect(generateEvidencePackage(source!)).rejects.toThrow("REPORT_ARTIFACT_CONFLICT");
+  });
+
+  it("exports routine events only after their daily log is finalized", async () => {
+    const repository = new MemoryParentingRepository();
+    const context = await repository.resolveContext(identity);
+    const date = "2026-07-14";
+    const dashboard = await repository.getDashboard(context, date);
+    const entry = await repository.createCareEntry(context, {
+      localDate: date, taskKey: "custom", taskLabel: "Finalized export test",
+      childIds: [dashboard.children[0].id], caregiverIds: [dashboard.caregivers[0].id],
+      status: "completed", occurredAt: localDateTimeToUtc(`${date}T12:00`, context.workspace.timezone),
+    });
+    const filters = { from: date, to: date, childIds: [], includeCare: true, includeAppointments: true, includeIncidents: true };
+    const draft = await repository.createReport(context, filters);
+    expect((await repository.getReportSource(context, draft.id))!.entries.map((item) => item.id)).not.toContain(entry.id);
+    await repository.finalizeDailyLog(context, date);
+    const finalized = await repository.createReport(context, filters);
+    expect((await repository.getReportSource(context, finalized.id))!.entries.map((item) => item.id)).toContain(entry.id);
+    expect((await repository.getReportSource(context, draft.id))!.entries.map((item) => item.id)).not.toContain(entry.id);
   });
 
   it("keeps report evidence immutable and includes every captured current revision", async () => {
     const repository = new MemoryParentingRepository();
     const context = await repository.resolveContext(identity);
     const date = localDateInTimezone(new Date(), context.workspace.timezone);
+    const dashboard = await repository.getDashboard(context, date);
+    await repository.createCareEntry(context, {
+      localDate: date, taskKey: "custom", taskLabel: "Snapshot test",
+      childIds: [dashboard.children[0].id], caregiverIds: [dashboard.caregivers[0].id],
+      status: "completed", occurredAt: localDateTimeToUtc(`${date}T12:00`, context.workspace.timezone),
+    });
     await repository.finalizeDailyLog(context, date);
     const report = await repository.createReport(context, {
       from: date,
@@ -1490,7 +1530,7 @@ describe("memory repository integration", () => {
       revisions: Array<{ id: string; sha256: string }>;
     };
     expect(manifest).toMatchObject({
-      schemaVersion: 2,
+      schemaVersion: 3,
       plannedArrangementNotice:
         "Planned arrangements are context only and do not establish that care occurred.",
       plannedArrangements: [

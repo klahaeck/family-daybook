@@ -15,6 +15,7 @@ export function ReportsView({ initialData, childOptions, workspace, canCreate }:
   const { data } = useQuery({ queryKey: ["reports"], queryFn: fetchReports, initialData, refetchInterval: (query) => query.state.data?.some((report) => report.status === "pending") ? 4000 : false });
   return (
     <div className="space-y-5">
+      <p className="text-sm text-muted-foreground">New reports include a chart-based overview PDF and a detailed Excel workbook inside the evidence ZIP. Review all events together or use individual child tabs.</p>
       {canCreate && <div className="flex justify-end"><ReportDialog childOptions={childOptions} timezone={workspace.timezone} /></div>}
       <div className="space-y-4">
         {data.map((report) => (
@@ -33,7 +34,7 @@ export function ReportsView({ initialData, childOptions, workspace, canCreate }:
             </CardContent>
           </Card>
         ))}
-        {data.length === 0 && <Card className="border-dashed"><CardContent className="p-12 text-center"><FileCheck2 className="mx-auto size-8 text-muted-foreground" /><p className="mt-3 font-medium">No report snapshots yet</p><p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">Create a dated, attorney-reviewable package when you are ready to share records.</p></CardContent></Card>}
+        {data.length === 0 && <Card className="border-dashed"><CardContent className="p-12 text-center"><FileCheck2 className="mx-auto size-8 text-muted-foreground" /><p className="mt-3 font-medium">No report snapshots yet</p><p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">Create an overview PDF with charts and a detailed Excel workbook with All Events and individual child tabs. Both are included in the evidence ZIP.</p></CardContent></Card>}
       </div>
     </div>
   );
