@@ -16,6 +16,7 @@ import {
 import type { ReportSource } from "@/lib/repository/repository";
 import { reportArtifactPathnames } from "./artifact-paths";
 import { ReportDocument } from "./report-document";
+import { generateReportWorkbook, REPORT_WORKBOOK_NAME } from "./report-workbook";
 
 function safeName(name: string) {
   return name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 120);
@@ -98,6 +99,7 @@ async function verifyZipArtifact(
     pdfHash: string;
     checksums: string;
     attachmentPathnames: string[];
+    workbookHash: string;
   },
 ) {
   assertContentType(contentType, "application/zip");
@@ -106,17 +108,20 @@ async function verifyZipArtifact(
     const manifestFile = zip.file("manifest.json");
     const pdfFile = zip.file("parenting-log.pdf");
     const checksumsFile = zip.file("checksums.sha256");
-    if (!manifestFile || !pdfFile || !checksumsFile) {
+    const workbookFile = zip.file(REPORT_WORKBOOK_NAME);
+    if (!manifestFile || !pdfFile || !checksumsFile || !workbookFile) {
       throw new Error("REPORT_ARTIFACT_CONFLICT");
     }
-    const [manifestJson, packagedPdf, checksums] = await Promise.all([
+    const [manifestJson, packagedPdf, checksums, workbook] = await Promise.all([
       manifestFile.async("string"),
       pdfFile.async("uint8array"),
       checksumsFile.async("string"),
+      workbookFile.async("uint8array"),
     ]);
     if (
       sha256(canonicalJson(JSON.parse(manifestJson))) !== expected.manifestHash ||
       sha256(packagedPdf) !== expected.pdfHash ||
+      sha256(workbook) !== expected.workbookHash ||
       checksums !== expected.checksums ||
       expected.attachmentPathnames.some((pathname) => !zip.file(pathname))
     ) {
@@ -133,8 +138,11 @@ async function verifyZipArtifact(
 export async function generateEvidencePackage(
   source: ReportSource,
 ): Promise<GeneratedEvidencePackage> {
+  const workbook = await generateReportWorkbook(source);
+  const workbookHash = sha256(workbook);
   const manifest = {
-    schemaVersion: 2,
+    schemaVersion: 3,
+    workbook: { filename: REPORT_WORKBOOK_NAME, sha256: workbookHash },
     reportId: source.snapshot.id,
     workspaceId: source.workspace.id,
     generatedAt: source.snapshot.createdAt,
@@ -211,6 +219,7 @@ export async function generateEvidencePackage(
     const checksums = [
       `${pdfHash}  parenting-log.pdf`,
       `${manifestHash}  manifest.json`,
+      `${workbookHash}  ${REPORT_WORKBOOK_NAME}`,
     ];
     source.attachments.forEach((attachment, index) => {
       checksums.push(`${attachment.sha256}  ${attachmentPathnames[index]}`);
@@ -224,6 +233,7 @@ export async function generateEvidencePackage(
         async () => {
           const zip = new JSZip();
           zip.file("parenting-log.pdf", pdf);
+          zip.file(REPORT_WORKBOOK_NAME, workbook);
           zip.file("manifest.json", `${JSON.stringify(manifest, null, 2)}\n`);
           for (const [index, attachment] of source.attachments.entries()) {
             const file = await getPrivateFileStream(attachment.pathname);
@@ -254,6 +264,7 @@ export async function generateEvidencePackage(
             pdfHash,
             checksums: checksumsFile,
             attachmentPathnames,
+            workbookHash,
           }),
       )
     ) {

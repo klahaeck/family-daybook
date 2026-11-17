@@ -11,7 +11,10 @@
     "node": ">=20.19.0"
   },
   "overrides": {
-    "@clerk/clerk-js": "6.32.0"
+    "@clerk/clerk-js": "6.32.0",
+    "exceljs": {
+      "uuid": "^11.1.1"
+    }
   },
   "scripts": {
     "dev": "next dev",
@@ -47,6 +50,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "date-fns": "^4.4.0",
+    "exceljs": "^4.4.0",
     "file-type": "^22.0.1",
     "jszip": "^3.10.1",
     "lucide-react": "^1.24.0",

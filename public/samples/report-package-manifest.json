@@ -1,6 +1,10 @@
 {
   "sampleNotice": "Synthetic example only. All identifiers and checksum values are invented.",
-  "schemaVersion": 2,
+  "schemaVersion": 3,
+  "workbook": {
+    "filename": "daily-log.xlsx",
+    "sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+  },
   "reportId": "report_synthetic_example",
   "workspaceId": "workspace_synthetic_example",
   "generatedAt": "2026-09-14T15:00:00.000Z",

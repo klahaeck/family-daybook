@@ -47,7 +47,7 @@ export function ReportDialog({ childOptions, timezone }: { childOptions: Child[]
       <DialogTrigger render={<Button />}><FilePlus2 className="size-4" /> Create report</DialogTrigger>
       <DialogContent className="sm:max-w-lg">
         <form action={(data) => mutation.mutate(data)}>
-          <DialogHeader><DialogTitle>Create evidence package</DialogTitle><DialogDescription>Generate an immutable PDF snapshot plus original files, a manifest, and checksums.</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle>Create evidence package</DialogTitle><DialogDescription>Generate a chart-based overview PDF and an Excel workbook with All Events and individual child tabs, plus original files, a manifest, and checksums.</DialogDescription></DialogHeader>
           <div className="my-5 space-y-5">
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2"><Label htmlFor="from">From</Label><Input id="from" name="from" type="date" required defaultValue={localDateInTimezone(oneMonthAgo, timezone)} /></div>
@@ -60,7 +60,7 @@ export function ReportDialog({ childOptions, timezone }: { childOptions: Child[]
                 <label key={item.key} className="flex items-center gap-3 text-sm"><Checkbox checked={included[item.key as keyof typeof included]} onCheckedChange={(checked) => setIncluded((current) => ({ ...current, [item.key]: checked }))} />{item.label}</label>
               ))}
             </fieldset>
-            <div className="rounded-xl bg-muted/60 p-4 text-xs leading-5 text-muted-foreground">Reports use transparent counts only. They do not draw conclusions, calculate parenting scores, or guarantee admissibility.</div>
+            <div className="rounded-xl bg-muted/60 p-4 text-xs leading-5 text-muted-foreground">Routine items and special days include finalized daily logs only. The overview includes charts, incidents, and special days. Reports use descriptive counts, not parenting scores, and do not guarantee admissibility.</div>
             {error && <p className="text-sm text-destructive">{error}</p>}
           </div>
           <DialogFooter><Button type="submit" disabled={mutation.isPending}>{mutation.isPending && <Loader2 className="size-4 animate-spin" />}{mutation.isPending ? "Building package…" : "Generate package"}</Button></DialogFooter>

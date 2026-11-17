@@ -1,0 +1,100 @@
+import ExcelJS from "exceljs";
+import JSZip from "jszip";
+import { formatDateTime } from "@/lib/domain/dates";
+import type { ReportSource } from "@/lib/repository/repository";
+import { reportChildren, reportEvents, reportLocalDate, reportNames, type ReportEvent } from "./report-data";
+
+export const REPORT_WORKBOOK_NAME = "daily-log.xlsx";
+
+const detailColumns = [
+  "notes", "durationMinutes", "activityType", "lateEntry", "provider", "location",
+  "arrivedAt", "cancellationDetails", "category", "discoveredAt", "peoplePresent",
+  "witnesses", "observations", "exactQuotes", "immediateActions", "outcome",
+  "note", "assignments", "tasks", "dailyLogId", "templateItemId", "arrangementTaskId",
+  "taskKey", "seriesId", "createdBy", "updatedAt",
+];
+
+function detailValue(value: unknown): string | number | boolean {
+  if (value === undefined || value === null) return "";
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return value;
+  return JSON.stringify(value);
+}
+
+function eventRow(source: ReportSource, event: ReportEvent) {
+  return [
+    reportLocalDate(event.at, source.workspace.timezone),
+    event.at.length === 10 ? "Planned date only" : formatDateTime(event.at, source.workspace.timezone),
+    event.at, event.type, event.title,
+    reportNames(event.childIds, source.children), event.childIds.join(", "),
+    reportNames(event.caregiverIds, source.caregivers), event.caregiverIds.join(", "),
+    event.status, event.recordedAt, event.id, event.revisionId,
+    ...detailColumns.map((key) => detailValue(event.details[key])),
+  ];
+}
+
+function sheetName(name: string, used: Set<string>) {
+  const base = name.replace(/[\\/*?:\[\]\x00-\x1f']/g, " ").trim() || "Child";
+  let candidate = base.slice(0, 31);
+  for (let index = 2; used.has(candidate.toLowerCase()); index++) {
+    const suffix = ` (${index})`;
+    candidate = base.slice(0, 31 - suffix.length) + suffix;
+  }
+  used.add(candidate.toLowerCase());
+  return candidate;
+}
+
+export async function generateReportWorkbook(source: ReportSource): Promise<Uint8Array> {
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = "Family Daybook";
+  workbook.created = new Date(source.snapshot.createdAt);
+  workbook.modified = new Date(source.snapshot.createdAt);
+  const guide = workbook.addWorksheet("Read Me");
+  guide.columns = [{ width: 26 }, { width: 110 }];
+  guide.addRows([
+    ["Daily log detail", source.workspace.name],
+    ["Report ID", source.snapshot.id],
+    ["Date range", `${source.snapshot.filters.from} through ${source.snapshot.filters.to}`],
+    ["Timezone", source.workspace.timezone],
+    ["All Events", "Each captured record appears once. Filter the Children or Child IDs columns to review children together."],
+    ["Child tabs", "The same events filtered per child. Shared events repeat across tabs with the same Event ID; do not add tab totals together."],
+    ["Finalized daily logs", "Routine items and special days come only from finalized daily logs. Appointments and incidents retain the existing date and child filters."],
+    ["Special days", "Plans and assigned responsibilities only; they do not establish that care occurred. Excluded from event chart totals."],
+    ["Filters", JSON.stringify(source.snapshot.filters)],
+    ["Timestamps", "Local date/time is shown alongside the original timestamp. Recorded At preserves when information was entered."],
+    ["Evidence", "Original attachments, revision metadata, and checksums are included in the surrounding evidence ZIP."],
+  ]);
+  guide.getColumn(2).alignment = { wrapText: true, vertical: "top" };
+  guide.eachRow((row) => { row.height = 44; });
+
+  const events = reportEvents(source);
+  const used = new Set(["read me", "all events", "history"]);
+  const sheets = [
+    { name: "All Events", events },
+    ...reportChildren(source).map((child) => ({
+      name: sheetName(child.displayName, used),
+      events: events.filter((event) => event.childIds.includes(child.id)),
+    })),
+  ];
+  const headers = [
+    "Local Date", `Local Date/Time (${source.workspace.timezone})`, "Original Timestamp",
+    "Event Type", "Event", "Children", "Child IDs", "Caregivers / Assigned", "Caregiver IDs",
+    "Status", "Recorded At", "Event ID", "Revision ID", ...detailColumns,
+  ];
+  for (const sheet of sheets) {
+    const worksheet = workbook.addWorksheet(sheet.name, { views: [{ state: "frozen", ySplit: 1 }] });
+    worksheet.columns = headers.map((header) => ({ header, width: header === "Event" || header === "Children" ? 30 : 24 }));
+    for (const event of sheet.events) {
+      // Plain string values, never formula objects, keep user-entered text inert in Excel.
+      worksheet.addRow(eventRow(source, event));
+    }
+    worksheet.autoFilter = { from: { row: 1, column: 1 }, to: { row: Math.max(1, worksheet.rowCount), column: headers.length } };
+    worksheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
+    worksheet.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF173F35" } };
+    worksheet.getRow(1).height = 30;
+    worksheet.eachRow((row) => { row.alignment = { vertical: "top", wrapText: true }; });
+  }
+  // ExcelJS timestamps ZIP members at write time; fix them for retry-stable hashes.
+  const archive = await JSZip.loadAsync(await workbook.xlsx.writeBuffer());
+  archive.forEach((_, file) => { file.date = new Date("2000-01-01T00:00:00Z"); });
+  return archive.generateAsync({ type: "uint8array", compression: "DEFLATE" });
+}
