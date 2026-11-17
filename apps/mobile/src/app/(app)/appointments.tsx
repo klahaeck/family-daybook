@@ -1,10 +1,11 @@
+import { FormSheet } from "@/components/form-sheet";
 import { useRecordMutation, useRecordPreview, isRecordSaving } from "@family-daybook/api-client/record-saving";
 import { appointmentPreview, pendingIdentity } from "@/record-previews";
 import type { Appointment, AppointmentInput } from "@family-daybook/contracts";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import { useState } from "react";
-import { Text } from "react-native";
+import { Text, View } from "react-native";
 
 import { ActionButton, Body, Card, ChoiceRow, Field, Heading, Screen, ScreenState } from "@/components/ui";
 import { useAppTheme } from "@/mobile-theme";
@@ -23,6 +24,7 @@ export default function AppointmentsScreen() {
   const appointmentsQuery = useQuery({ queryKey: ["appointments"], queryFn: api.listAppointments });
   const appointments = { ...appointmentsQuery, data: useRecordPreview(["appointments"], appointmentsQuery.data) };
   const settings = useQuery({ queryKey: ["settings"], queryFn: api.getSettings, enabled: Boolean(session.data?.capabilities.mutateRecords) });
+  const [formOpen, setFormOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [provider, setProvider] = useState("");
   const [location, setLocation] = useState("");
@@ -51,6 +53,7 @@ export default function AppointmentsScreen() {
     confirm: (record) => appointmentPreview(record),
     mutationFn: (input: AppointmentInput) => api.createAppointment(input),
     onSuccess: async () => {
+    setFormOpen(false);
     setTitle("");
     setProvider("");
     setLocation("");
@@ -62,25 +65,29 @@ export default function AppointmentsScreen() {
   } });
   return (
     <Screen title="Appointments" subtitle="Track scheduled care and attendance.">
-      {session.data?.capabilities.mutateRecords ? <Card>
-        <Heading>Add appointment</Heading>
-        <Field label="Title" value={title} onChangeText={setTitle} />
-        <Field label="Provider (optional)" value={provider} onChangeText={setProvider} />
-        <Field label="Location (optional)" value={location} onChangeText={setLocation} />
-        <Field label="Scheduled date and time (ISO 8601)" value={scheduledAt} onChangeText={setScheduledAt} autoCapitalize="none" />
-        <Heading>Status</Heading>
-        {appointmentStatuses.map((value) => <ChoiceRow key={value} label={value} selected={status === value} onPress={() => setStatus(value)} />)}
-        {status === "attended" || status === "late" ? <Field label="Arrival date and time (ISO 8601, optional)" value={arrivedAt} onChangeText={setArrivedAt} autoCapitalize="none" /> : null}
-        {status === "cancelled" || status === "rescheduled" ? <Field label="Cancellation or rescheduling details (optional)" value={cancellationDetails} onChangeText={setCancellationDetails} multiline /> : null}
-        <Field label="Notes (optional)" value={notes} onChangeText={setNotes} multiline />
-        <Heading>Children</Heading>
-        {settings.data?.children.filter((item) => item.active).map((child) => <ChoiceRow key={child.id} label={child.displayName} selected={childIds.includes(child.id)} onPress={() => setChildIds((selected) => selected.includes(child.id) ? selected.filter((id) => id !== child.id) : [...selected, child.id])} />)}
-        <Heading>Responsible caregivers</Heading>
-        {settings.data?.caregivers.filter((item) => item.active).map((caregiver) => <ChoiceRow key={caregiver.id} label={caregiver.displayName} selected={caregiverIds.includes(caregiver.id)} onPress={() => setCaregiverIds((selected) => selected.includes(caregiver.id) ? selected.filter((id) => id !== caregiver.id) : [...selected, caregiver.id])} />)}
-        <ScreenState loading={settings.isPending} error={settings.error} onRetry={() => void settings.refetch()} />
-        {create.error ? <Text style={{ color: colors.danger }}>{friendlyError(create.error)}</Text> : null}
-        <ActionButton label={create.isPending ? "Saving…" : "Add appointment"} disabled={create.isPending || title.trim().length < 2 || childIds.length === 0 || caregiverIds.length === 0} onPress={() => create.mutate(buildInput())} />
-      </Card> : null}
+      {session.data?.capabilities.mutateRecords ? <>
+        <View style={{ flexDirection: "row", justifyContent: "flex-end" }}>
+          <ActionButton compact icon="add" label="Add appointment" disabled={create.isPending} onPress={() => { create.reset(); setFormOpen(true); }} />
+        </View>
+        <FormSheet title="Add appointment" visible={formOpen && !create.isPending} onClose={() => setFormOpen(false)}>
+          <Field label="Title" value={title} onChangeText={setTitle} />
+          <Field label="Provider (optional)" value={provider} onChangeText={setProvider} />
+          <Field label="Location (optional)" value={location} onChangeText={setLocation} />
+          <Field label="Scheduled date and time (ISO 8601)" value={scheduledAt} onChangeText={setScheduledAt} autoCapitalize="none" />
+          <Heading>Status</Heading>
+          {appointmentStatuses.map((value) => <ChoiceRow key={value} label={value} selected={status === value} onPress={() => setStatus(value)} />)}
+          {status === "attended" || status === "late" ? <Field label="Arrival date and time (ISO 8601, optional)" value={arrivedAt} onChangeText={setArrivedAt} autoCapitalize="none" /> : null}
+          {status === "cancelled" || status === "rescheduled" ? <Field label="Cancellation or rescheduling details (optional)" value={cancellationDetails} onChangeText={setCancellationDetails} multiline /> : null}
+          <Field label="Notes (optional)" value={notes} onChangeText={setNotes} multiline />
+          <Heading>Children</Heading>
+          {settings.data?.children.filter((item) => item.active).map((child) => <ChoiceRow key={child.id} label={child.displayName} selected={childIds.includes(child.id)} onPress={() => setChildIds((selected) => selected.includes(child.id) ? selected.filter((id) => id !== child.id) : [...selected, child.id])} />)}
+          <Heading>Responsible caregivers</Heading>
+          {settings.data?.caregivers.filter((item) => item.active).map((caregiver) => <ChoiceRow key={caregiver.id} label={caregiver.displayName} selected={caregiverIds.includes(caregiver.id)} onPress={() => setCaregiverIds((selected) => selected.includes(caregiver.id) ? selected.filter((id) => id !== caregiver.id) : [...selected, caregiver.id])} />)}
+          <ScreenState loading={settings.isPending} error={settings.error} onRetry={() => void settings.refetch()} />
+          {create.error ? <Text style={{ color: colors.danger }}>{friendlyError(create.error)}</Text> : null}
+          <ActionButton label={create.isPending ? "Saving…" : "Add appointment"} disabled={create.isPending || title.trim().length < 2 || childIds.length === 0 || caregiverIds.length === 0} onPress={() => create.mutate(buildInput())} />
+        </FormSheet>
+      </> : null}
       <ScreenState loading={appointments.isPending} error={appointments.error} onRetry={() => void appointments.refetch()} empty={appointments.data?.length === 0 ? "No appointments yet." : undefined} />
       {appointments.data?.map((item) => <Card key={item.id}><Heading>{item.title}</Heading><Body>{formatDateTime(item.scheduledAt, session.data?.workspace.timezone ?? "UTC")}</Body><Body muted>{item.status}{item.provider ? ` · ${item.provider}` : ""}</Body>{item.location ? <Body>{item.location}</Body> : null}{item.arrivedAt ? <Body>Arrived {formatDateTime(item.arrivedAt, session.data?.workspace.timezone ?? "UTC")}</Body> : null}{item.cancellationDetails ? <Body>Cancellation/rescheduling: {item.cancellationDetails}</Body> : null}<ActionButton label={isRecordSaving(item) ? "Saving…" : "View details"} disabled={isRecordSaving(item)} secondary onPress={() => router.push({ pathname: "/records/[recordType]/[id]", params: { recordType: "appointment", id: item.id } })} /></Card>)}
     </Screen>

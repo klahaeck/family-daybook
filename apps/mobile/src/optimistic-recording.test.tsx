@@ -4,11 +4,17 @@ import type { Day } from "@family-daybook/contracts";
 import type { ReactNode } from "react";
 import TodayScreen from "./app/(app)/index";
 import AppointmentsScreen from "./app/(app)/appointments";
+import IncidentsScreen from "./app/(app)/incidents";
+import ReportsScreen from "./app/(app)/reports";
 
-const mockApi = { getDay: jest.fn(), getSettings: jest.fn(), recordRoutine: jest.fn(), createCareRecord: jest.fn(), listAppointments: jest.fn(), createAppointment: jest.fn() };
+jest.mock("expo-file-system", () => ({ File: jest.fn(), Paths: { cache: "cache" } }));
+jest.mock("expo-sharing", () => ({ isAvailableAsync: jest.fn(), shareAsync: jest.fn() }));
+let mockCanMutate = true;
+
+const mockApi = { getDay: jest.fn(), getSettings: jest.fn(), recordRoutine: jest.fn(), createCareRecord: jest.fn(), listAppointments: jest.fn(), createAppointment: jest.fn(), listIncidents: jest.fn(), createIncident: jest.fn(), listReports: jest.fn(), createReport: jest.fn() };
 jest.mock("@/providers", () => ({
   useApi: () => mockApi,
-  useDaybookSession: () => ({ data: { currentLocalDate: "2026-10-13", workspace: { timezone: "America/Chicago" }, member: { role: "owner" }, billing: { status: "active" }, capabilities: { mutateRecords: true, finalizeDays: true } } }),
+  useDaybookSession: () => ({ data: { currentLocalDate: "2026-10-13", workspace: { timezone: "America/Chicago" }, member: { role: "owner" }, billing: { status: "active" }, capabilities: { mutateRecords: mockCanMutate, finalizeDays: true } } }),
 }));
 jest.mock("expo-router", () => ({ useRouter: () => ({ push: jest.fn() }), Redirect: () => null }));
 jest.mock("expo-crypto", () => ({ randomUUID: () => "temporary" }));
@@ -40,9 +46,25 @@ describe("optimistic mobile records", () => {
   afterEach(() => { cleanup(); clients.splice(0).forEach((client) => client.clear()); });
   beforeEach(() => {
     jest.clearAllMocks();
+    mockCanMutate = true;
+    mockApi.listIncidents.mockResolvedValue({ incidents: [], attachments: [] });
+    mockApi.listReports.mockResolvedValue([]);
     mockApi.getDay.mockResolvedValue(day);
     mockApi.getSettings.mockResolvedValue({ children: [{ id: "child", displayName: "Sam", active: true }], caregivers: [{ id: "caregiver", displayName: "Parent", active: true }] });
     mockApi.listAppointments.mockResolvedValue([]);
+  });
+
+  it("opens the log calendar, navigates to a chosen date, and blocks future days", async () => {
+    const view = mount(<TodayScreen />);
+    fireEvent.press(await view.findByRole("button", { name: "Choose log date" }));
+    expect(view.getByRole("button", { name: "2026-10-14" }).props.accessibilityState.disabled).toBe(true);
+    fireEvent.press(view.getByRole("button", { name: "Previous month" }));
+    fireEvent.press(view.getByRole("button", { name: "2026-09-15" }));
+    await waitFor(() => expect(mockApi.getDay).toHaveBeenCalledWith("2026-09-15"));
+    await waitFor(() => expect(view.queryByRole("button", { name: "Previous month" })).toBeNull());
+    fireEvent.press(view.getByRole("button", { name: "Choose log date" }));
+    fireEvent.press(view.getByLabelText("Close"));
+    await waitFor(() => expect(view.queryByRole("button", { name: "Previous month" })).toBeNull());
   });
 
   it("updates a routine immediately while preserving version checks and restores input on failure", async () => {
@@ -66,11 +88,13 @@ describe("optimistic mobile records", () => {
     let reject!: (error: Error) => void;
     mockApi.createAppointment.mockReturnValue(new Promise((_resolve, fail) => { reject = fail; }));
     const view = mount(<AppointmentsScreen />);
+    expect(view.queryByLabelText("Title")).toBeNull();
+    fireEvent.press(view.getByRole("button", { name: "Add appointment" }));
     await view.findByText("Sam");
     fireEvent.changeText(view.getByLabelText("Title"), "Dentist checkup");
     fireEvent.press(view.getAllByText("Sam").at(-1)!);
     fireEvent.press(view.getByText("Parent"));
-    fireEvent.press(view.getByRole("button", { name: "Add appointment" }));
+    fireEvent.press(view.getAllByRole("button", { name: "Add appointment" }).at(-1)!);
     expect(await view.findByText("Dentist checkup")).toBeTruthy();
     expect(view.getAllByText("Saving…").length).toBeGreaterThan(0);
     await act(async () => reject(new Error("Connection failed")));
@@ -79,11 +103,59 @@ describe("optimistic mobile records", () => {
     expect(view.getByLabelText("Title").props.value).toBe("Dentist checkup");
   });
 
+  it.each([
+    ["Add appointment", AppointmentsScreen, "Title"],
+    ["Add incident", IncidentsScreen, "Objective observations"],
+    ["New report", ReportsScreen, "From (YYYY-MM-DD)"],
+  ] as const)("opens and closes %s while preserving its draft", async (label, Component, field) => {
+    const view = mount(<Component />);
+    expect(view.queryByLabelText(field)).toBeNull();
+    fireEvent.press(view.getByRole("button", { name: label }));
+    fireEvent.changeText(view.getByLabelText(field), "Draft value");
+    fireEvent.press(view.getByLabelText("Close"));
+    expect(view.queryByLabelText(field)).toBeNull();
+    fireEvent.press(view.getByRole("button", { name: label }));
+    expect(view.getByLabelText(field).props.value).toBe("Draft value");
+    await act(async () => {});
+  });
+
+  it.each([
+    ["Add appointment", AppointmentsScreen],
+    ["Add incident", IncidentsScreen],
+    ["New report", ReportsScreen],
+  ] as const)("hides %s without mutation permission", async (label, Component) => {
+    mockCanMutate = false;
+    const view = mount(<Component />);
+    expect(view.queryByRole("button", { name: label })).toBeNull();
+    await act(async () => {});
+  });
+
+  it("restores the report sheet and draft when generation fails", async () => {
+    mockApi.createReport.mockRejectedValue(new Error("Report failed"));
+    const view = mount(<ReportsScreen />);
+    fireEvent.press(view.getByRole("button", { name: "New report" }));
+    fireEvent.changeText(view.getByLabelText("From (YYYY-MM-DD)"), "2026-10-01");
+    fireEvent.press(view.getByRole("button", { name: "Generate report" }));
+    expect(await view.findByText("Report failed")).toBeTruthy();
+    expect(view.getByLabelText("From (YYYY-MM-DD)").props.value).toBe("2026-10-01");
+  });
+
+  it("closes the report sheet after generation succeeds", async () => {
+    mockApi.createReport.mockResolvedValue({ id: "report_1" });
+    const view = mount(<ReportsScreen />);
+    fireEvent.press(view.getByRole("button", { name: "New report" }));
+    fireEvent.press(view.getByRole("button", { name: "Generate report" }));
+    await waitFor(() => expect(mockApi.createReport).toHaveBeenCalled());
+    await waitFor(() => expect(view.queryByLabelText("From (YYYY-MM-DD)")).toBeNull());
+    fireEvent.press(view.getByRole("button", { name: "New report" }));
+    expect(view.getByLabelText("From (YYYY-MM-DD)")).toBeTruthy();
+  });
+
   it("restores a custom record draft after the sheet has closed for a failed save", async () => {
     let reject!: (error: Error) => void;
     mockApi.createCareRecord.mockReturnValue(new Promise((_resolve, fail) => { reject = fail; }));
     const view = mount(<TodayScreen />);
-    fireEvent.press(await view.findByRole("button", { name: "Add record" }));
+    fireEvent.press(await view.findByRole("button", { name: "Add custom record" }));
     fireEvent.changeText(view.getByLabelText("What happened?"), "Homework");
     fireEvent.changeText(view.getByLabelText("Time (HH:mm)"), "16:45");
     fireEvent.changeText(view.getAllByLabelText("Notes (optional)").at(-1)!, "Read two chapters.");

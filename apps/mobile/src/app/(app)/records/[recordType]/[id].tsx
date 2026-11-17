@@ -1,3 +1,4 @@
+import { RecordBackButton } from "@/components/record-back-button";
 import { useRecordMutation, useRecordPreview, isRecordSaving } from "@family-daybook/api-client/record-saving";
 import { carePreview, textPreview } from "@/record-previews";
 import type {
@@ -393,7 +394,7 @@ export default function RecordDetailScreen() {
   });
 
   if (!recordType || !id) {
-    return <Screen title="Record"><InlineNotice>This record link is invalid.</InlineNotice></Screen>;
+    return <Screen title="Record"><RecordBackButton /><InlineNotice>This record link is invalid.</InlineNotice></Screen>;
   }
   const title = recordType === "care_entry" ? "Care record" : recordType === "appointment" ? "Appointment" : "Incident";
   const canMutate = Boolean(session.data?.capabilities.mutateRecords);
@@ -401,6 +402,7 @@ export default function RecordDetailScreen() {
 
   return (
     <Screen title={title} subtitle="Review the current record, its immutable history, and supporting files.">
+      <RecordBackButton />
       <ScreenState loading={bundle.isPending} error={bundle.error} onRetry={() => void bundle.refetch()} />
       {bundle.data ? <>
         {isRecordSaving(bundle.data.record) ? <InlineNotice>Saving…</InlineNotice> : null}

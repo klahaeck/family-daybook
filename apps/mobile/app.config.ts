@@ -52,6 +52,7 @@ const config: ExpoConfig = {
   plugins: [
     "expo-router",
     "expo-secure-store",
+    "expo-sharing",
     ["@clerk/expo", { appleSignIn: Boolean(appleTeamId) }],
   ],
   experiments: { reactCompiler: true },

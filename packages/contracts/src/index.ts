@@ -310,7 +310,7 @@ export const appointmentSchema = z.object({
   scheduledAt: z.string(),
   responsibleCaregiverIds: z.array(z.string()),
   status: appointmentStatusSchema,
-  arrivedAt: isoDateTimeSchema.optional(),
+  arrivedAt: z.preprocess((value) => value === null ? undefined : value, isoDateTimeSchema.optional()),
   cancellationDetails: z.string().trim().max(1000).optional(),
   notes: z.string().optional(),
   currentRevisionId: z.string(),
@@ -320,7 +320,7 @@ export const appointmentInputSchema = appointmentSchema.omit({
   id: true,
   currentRevisionId: true,
   recordVersion: true,
-});
+}).extend({ arrivedAt: isoDateTimeSchema.optional() });
 
 const incidentInputFieldsSchema = z.object({
   category: z.enum(["safety_hazard", "concerning_interaction", "other"]),
@@ -382,7 +382,7 @@ export const specialDaySchema = z.object({
   id: z.string(),
   localDate: localDateSchema,
   title: z.string(),
-  note: z.string().optional(),
+  note: z.preprocess((value) => value === null ? undefined : value, z.string().optional()),
   status: z.enum(["active", "cancelled"]),
   currentRevisionId: z.string(),
   recordVersion: z.string().optional(),

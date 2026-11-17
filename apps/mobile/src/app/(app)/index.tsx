@@ -1,12 +1,13 @@
+import { LogDatePicker } from "@/components/log-date-picker";
 import type { CustomCareRecordInput, Day } from "@family-daybook/contracts";
 import { useRecordMutation, useRecordPreview, isRecordSaving } from "@family-daybook/api-client/record-saving";
 import { carePreview, pendingIdentity } from "@/record-previews";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Redirect, useRouter } from "expo-router";
-import { useMemo, useState, type PropsWithChildren } from "react";
-import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { useMemo, useState } from "react";
+import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
+import { FormSheet } from "@/components/form-sheet";
 
 import { CustomCareForm } from "@/components/record-form";
 import { ActionButton, Badge, Body, Card, ChoiceRow, Field, Heading, IconButton, InlineNotice, ProgressBar, Screen, ScreenState } from "@/components/ui";
@@ -18,23 +19,6 @@ import { formatLocalDate, friendlyError, localDateTimeIso, shiftDate, todayLocal
 
 type CareStatus = "completed" | "partial" | "missed" | "not_applicable";
 
-function FormSheet({ children, title, visible, onClose }: PropsWithChildren<{ title: string; visible: boolean; onClose: () => void }>) {
-  const styles = useThemedStyles(createStyles);
-  return (
-    <Modal animationType="slide" onRequestClose={onClose} presentationStyle="pageSheet" visible={visible}>
-      <SafeAreaView edges={["top", "bottom"]} style={styles.sheetSafeArea}>
-        <View style={styles.sheetHeader}>
-          <Text style={styles.sheetTitle}>{title}</Text>
-          <IconButton icon="close" label="Close" onPress={onClose} />
-        </View>
-        <ScrollView automaticallyAdjustKeyboardInsets contentContainerStyle={styles.sheetContent} keyboardShouldPersistTaps="handled">
-          {children}
-        </ScrollView>
-      </SafeAreaView>
-    </Modal>
-  );
-}
-
 export default function TodayScreen() {
   const { colors } = useAppTheme();
   const styles = useThemedStyles(createStyles);
@@ -45,6 +29,7 @@ export default function TodayScreen() {
   const today = session.data?.currentLocalDate ?? todayLocalDate();
   const timeZone = session.data?.workspace.timezone ?? "America/Chicago";
   const [date, setDate] = useState(today);
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [activeTaskId, setActiveTaskId] = useState<string>();
   const [customOpen, setCustomOpen] = useState(false);
   const [status, setStatus] = useState<CareStatus>("completed");
@@ -132,19 +117,19 @@ export default function TodayScreen() {
     <Screen eyebrow="Daily care log" title={title} subtitle={`A clear, factual view of ${historical ? "care on this day" : "today’s care"} for your children.`}>
       <View style={styles.headingActions}>
         <ActionButton compact icon="calendar-number-outline" label="Special days" secondary onPress={() => router.push("/(app)/special-days")} />
-        {canEdit ? <ActionButton compact icon="add" label="Add record" disabled={savingCare} onPress={() => { custom.reset(); setCustomOpen(true); }} /> : null}
+        {canEdit ? <ActionButton compact icon="add" label="Add custom record" disabled={savingCare} onPress={() => { custom.reset(); setCustomOpen(true); }} /> : null}
       </View>
 
       <Card>
         <View accessibilityLabel="Choose log date" style={styles.dateControls}>
           <IconButton icon="chevron-back" label="Previous day" onPress={() => navigateToDate(shiftDate(date, -1))} />
-          <Pressable accessibilityLabel="Return to today" accessibilityRole="button" onPress={() => navigateToDate(today)} style={({ pressed }) => [styles.dateValue, pressed && styles.pressed]}>
+          <Pressable accessibilityLabel="Choose log date" accessibilityRole="button" disabled={savingCare} onPress={() => setDatePickerOpen(true)} style={({ pressed }) => [styles.dateValue, pressed && styles.pressed]}>
             <Ionicons color={colors.primary} name="calendar-outline" size={18} />
             <Text numberOfLines={1} style={styles.dateText}>{date}</Text>
           </Pressable>
           <IconButton disabled={date >= today} icon="chevron-forward" label="Next day" onPress={() => navigateToDate(shiftDate(date, 1))} />
         </View>
-        {historical ? <ActionButton compact label="Return to today" secondary onPress={() => navigateToDate(today)} /> : <Body muted>Select an earlier date to add a contemporaneously labeled past entry.</Body>}
+        {historical ? <View style={{ alignItems: "center" }}><ActionButton compact label="Return to today" secondary onPress={() => navigateToDate(today)} /></View> : <Body muted>Select an earlier date to add a contemporaneously labeled past entry.</Body>}
       </Card>
 
       {historical ? <InlineNotice>Records added more than two calendar days later retain a visible late-entry label.</InlineNotice> : null}
@@ -250,6 +235,8 @@ export default function TodayScreen() {
         ) : null}
       </> : null}
 
+      {datePickerOpen ? <LogDatePicker date={date} today={today} onClose={() => setDatePickerOpen(false)} onSelect={(selected) => { navigateToDate(selected); setDatePickerOpen(false); }} /> : null}
+
       <FormSheet title={activeTask?.label ?? "Record care"} visible={Boolean(activeTask) && !routine.isPending} onClose={() => setActiveTaskId(undefined)}>
         {activeTask ? <>
           <Body muted>{formatLocalDate(date)} · planned around {activeTask.suggestedTime}</Body>
@@ -273,7 +260,7 @@ export default function TodayScreen() {
 
 const createStyles = (colors: ThemeColors) => StyleSheet.create({
   pressed: { opacity: 0.62 },
-  headingActions: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  headingActions: { flexDirection: "row", flexWrap: "wrap", justifyContent: "flex-end", gap: spacing.sm },
   dateControls: { alignItems: "center", flexDirection: "row", gap: spacing.sm },
   dateValue: { alignItems: "center", flex: 1, flexDirection: "row", gap: spacing.sm, justifyContent: "center", minHeight: 46, minWidth: 0 },
   dateText: { color: colors.ink, fontSize: 16, fontWeight: "700" },
@@ -306,8 +293,4 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   finalizeIcon: { alignItems: "center", backgroundColor: colors.mutedSurface, borderRadius: 13, height: 44, justifyContent: "center", width: 44 },
   finalizeCopy: { flex: 1, gap: 3 },
   errorText: { color: colors.danger, fontSize: 14, lineHeight: 20 },
-  sheetSafeArea: { backgroundColor: colors.canvas, flex: 1 },
-  sheetHeader: { alignItems: "center", backgroundColor: colors.surface, borderBottomColor: colors.border, borderBottomWidth: 1, flexDirection: "row", justifyContent: "space-between", minHeight: 64, paddingHorizontal: spacing.md },
-  sheetTitle: { color: colors.ink, flex: 1, fontFamily: "Georgia", fontSize: 23, fontWeight: "700" },
-  sheetContent: { gap: 14, padding: spacing.md, paddingBottom: spacing.xl },
 });

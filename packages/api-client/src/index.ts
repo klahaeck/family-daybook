@@ -162,6 +162,12 @@ export class DaybookApiClient {
       parsed = (schema ? schema.parse(data) : data) as T;
     } catch (error) {
       if (error instanceof ZodError) {
+        if (process.env.NODE_ENV === "development") {
+          console.warn("Unexpected API response", path, error.issues.map(({ path: issuePath, code }) => ({
+            path: issuePath.map(String).join("."),
+            code,
+          })));
+        }
         throw new DaybookApiError(
           502,
           "INTERNAL_ERROR",
