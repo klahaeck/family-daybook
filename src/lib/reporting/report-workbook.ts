@@ -10,8 +10,7 @@ const detailColumns = [
   "notes", "durationMinutes", "activityType", "lateEntry", "provider", "location",
   "arrivedAt", "cancellationDetails", "category", "discoveredAt", "peoplePresent",
   "witnesses", "observations", "exactQuotes", "immediateActions", "outcome",
-  "note", "assignments", "tasks", "dailyLogId", "templateItemId", "arrangementTaskId",
-  "taskKey", "seriesId", "createdBy", "updatedAt",
+  "note", "tasks", "taskKey",
 ];
 
 function detailValue(value: unknown): string | number | boolean {
@@ -25,9 +24,9 @@ function eventRow(source: ReportSource, event: ReportEvent) {
     reportLocalDate(event.at, source.workspace.timezone),
     event.at.length === 10 ? "Planned date only" : formatDateTime(event.at, source.workspace.timezone),
     event.at, event.type, event.title,
-    reportNames(event.childIds, source.children), event.childIds.join(", "),
-    reportNames(event.caregiverIds, source.caregivers), event.caregiverIds.join(", "),
-    event.status, event.recordedAt, event.id, event.revisionId,
+    reportNames(event.childIds, source.children),
+    reportNames(event.caregiverIds, source.caregivers),
+    event.status, event.recordedAt,
     ...detailColumns.map((key) => detailValue(event.details[key])),
   ];
 }
@@ -55,8 +54,8 @@ export async function generateReportWorkbook(source: ReportSource): Promise<Uint
     ["Report ID", source.snapshot.id],
     ["Date range", `${source.snapshot.filters.from} through ${source.snapshot.filters.to}`],
     ["Timezone", source.workspace.timezone],
-    ["All Events", "Each captured record appears once. Filter the Children or Child IDs columns to review children together."],
-    ["Child tabs", "The same events filtered per child. Shared events repeat across tabs with the same Event ID; do not add tab totals together."],
+    ["All Events", "Each captured record appears once. Filter the Children column to review children together."],
+    ["Child tabs", "The same events filtered per child. Shared events repeat across tabs; do not add tab totals together."],
     ["Finalized daily logs", "Routine items and special days come only from finalized daily logs. Appointments and incidents retain the existing date and child filters."],
     ["Special days", "Plans and assigned responsibilities only; they do not establish that care occurred. Excluded from event chart totals."],
     ["Filters", JSON.stringify(source.snapshot.filters)],
@@ -64,6 +63,7 @@ export async function generateReportWorkbook(source: ReportSource): Promise<Uint
     ["Long details", "Values exceeding Excel's cell text limit continue in adjacent columns. Join the original and continued columns in order to reconstruct the complete value."],
     ["Evidence", "Original attachments, revision metadata, and checksums are included in the surrounding evidence ZIP."],
   ]);
+  guide.getColumn(1).alignment = { vertical: "top" };
   guide.getColumn(2).alignment = { wrapText: true, vertical: "top" };
   guide.eachRow((row) => { row.height = 44; });
 
@@ -78,8 +78,8 @@ export async function generateReportWorkbook(source: ReportSource): Promise<Uint
   ];
   const headers = [
     "Local Date", `Local Date/Time (${source.workspace.timezone})`, "Original Timestamp",
-    "Event Type", "Event", "Children", "Child IDs", "Caregivers / Assigned", "Caregiver IDs",
-    "Status", "Recorded At", "Event ID", "Revision ID", ...detailColumns,
+    "Event Type", "Event", "Children", "Caregivers / Assigned",
+    "Status", "Recorded At", ...detailColumns,
   ];
   const allRows = events.map((event) => eventRow(source, event));
   const cellLimit = 32_000;

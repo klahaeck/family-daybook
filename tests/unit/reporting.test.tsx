@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
+import { inflateSync } from "node:zlib";
 import ExcelJS from "exceljs";
 import JSZip from "jszip";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { reportEvents, summarizeReport } from "@/lib/reporting/report-data";
 import { generateReportWorkbook } from "@/lib/reporting/report-workbook";
 import { ReportDocument } from "@/lib/reporting/report-document";
+import { reportAttachmentPath } from "@/lib/reporting/attachment-path";
 import type { ReportSource } from "@/lib/repository/repository";
 
 function source(): ReportSource {
@@ -58,6 +60,21 @@ describe("report overview", () => {
     expect(reportEvents(source())).toHaveLength(5);
   });
 
+  it("summarizes completed and partial care records once per caregiver, not per child", () => {
+    const input = source();
+    input.caregivers.push({ ...input.caregivers[0], id: "other", displayName: "Other caregiver" });
+    input.entries[0].caregiverIds = ["parent", "other"];
+    input.entries.push({ ...input.entries[0], id: "partial", status: "partial", taskLabel: "Lunch", caregiverIds: ["parent"] });
+    const summary = summarizeReport(input);
+    expect(summary.careRecordCount).toBe(2);
+    expect(summary.caregivers).toEqual([
+      { id: "parent", label: "Parent", count: 2, recordItems: [{ label: "Dinner", count: 1 }, { label: "Lunch", count: 1 }] },
+      { id: "other", label: "Other caregiver", count: 1, recordItems: [{ label: "Dinner", count: 1 }] },
+    ]);
+    input.snapshot.filters.includeCare = false;
+    expect(summarizeReport(input).caregivers.every((caregiver) => caregiver.count === 0)).toBe(true);
+  });
+
   it("keeps local boundary events visible without changing snapshot membership", () => {
     const input = source();
     input.entries[0].occurredAt = "2026-06-01T01:00:00Z";
@@ -80,6 +97,25 @@ describe("report overview", () => {
     expect(summarizeReport(input).children).toEqual([{ label: "All Events", count: 2 }]);
   });
 
+  it("lists incident supporting files by their exact evidence ZIP paths", async () => {
+    const input = source();
+    input.attachments = [
+      { id: "file-1", recordType: "incident", recordId: "incident", originalName: "photo 1.jpg" },
+      { id: "file-2", recordType: "incident", recordId: "incident", originalName: "notes.pdf" },
+      { id: "file-3", recordType: "care_entry", recordId: "shared", originalName: "unrelated.pdf" },
+    ] as ReportSource["attachments"];
+    expect(reportAttachmentPath(input.attachments[0])).toBe("attachments/file-1-photo_1.jpg");
+    const pdf = await renderToBuffer(<ReportDocument source={input} />);
+    const text = [...pdf.toString("latin1").matchAll(/stream\n([\s\S]*?)\nendstream/g)]
+      .flatMap((match) => [...inflateSync(Buffer.from(match[1], "latin1")).toString("latin1").matchAll(/BT([\s\S]*?)ET/g)])
+      .map((match) => [...match[1].matchAll(/<([0-9a-f]+)>/gi)]
+        .map((segment) => Buffer.from(segment[1], "hex").toString("latin1")).join(""))
+      .join("\n");
+    expect(text).toContain("attachments/file-1-photo_1.jpg");
+    expect(text).toContain("attachments/file-2-notes.pdf");
+    expect(text).not.toContain("unrelated.pdf");
+  });
+
   it("renders populated and empty overview PDFs", async () => {
     const input = source();
     const populated = await renderToBuffer(<ReportDocument source={input} />);
@@ -91,26 +127,37 @@ describe("report overview", () => {
 });
 
 describe("report workbook", () => {
-  it("keeps all events together and creates unique, safe child tabs with shared IDs", async () => {
+  it("keeps all events together and creates unique, safe child tabs with readable columns", async () => {
     const book = await workbook(source());
     expect(book.worksheets).toHaveLength(5);
     expect(new Set(book.worksheets.map((sheet) => sheet.name.toLowerCase())).size).toBe(5);
     expect(book.worksheets.every((sheet) => sheet.name.length <= 31 && !/[\\/*?:\[\]]/.test(sheet.name))).toBe(true);
+    const guide = book.getWorksheet("Read Me")!;
+    for (let row = 1; row <= guide.rowCount; row++) {
+      expect(guide.getCell(row, 1).alignment.vertical).toBe("top");
+    }
     const all = book.getWorksheet("All Events")!;
     expect(all.rowCount).toBe(6);
     expect(all.views[0]).toMatchObject({ state: "frozen", ySplit: 1 });
     expect(all.autoFilter).toBeTruthy();
-    const ids = (sheet: ExcelJS.Worksheet) => sheet.getColumn(12).values.slice(2);
-    expect(ids(all).filter((id) => id === "shared")).toHaveLength(1);
-    expect(ids(book.worksheets[2])).toContain("shared");
-    expect(ids(book.worksheets[3])).toContain("shared");
+    const omitted = ["Child IDs", "Caregiver IDs", "Event ID", "Revision ID", "dailyLogId", "templateItemId", "arrangementTaskId", "seriesId", "assignments", "createdBy", "updatedAt"];
+    for (const sheet of book.worksheets.slice(1)) {
+      const headers = sheet.getRow(1).values as string[];
+      for (const header of omitted) expect(headers).not.toContain(header);
+      expect(headers).toEqual(all.getRow(1).values);
+    }
+    const titles = (sheet: ExcelJS.Worksheet) => sheet.getColumn(5).values.slice(2);
+    expect(titles(all).filter((title) => title === "Dinner")).toHaveLength(1);
+    expect(titles(book.worksheets[2])).toContain("Dinner");
+    expect(titles(book.worksheets[3])).toContain("Dinner");
     expect(book.worksheets[4].rowCount).toBe(1);
-    const shared = all.getRows(2, 5)!.find((row) => row.getCell(12).value === "shared")!;
+    const shared = all.getRows(2, 5)!.find((row) => row.getCell(5).value === "Dinner")!;
+    const column = (header: string) => (all.getRow(1).values as string[]).indexOf(header);
     expect(shared.getCell(1).value).toBe("2026-06-01");
-    expect(shared.getCell(14).value).toBe(source().entries[0].notes);
-    expect(shared.getCell(14).type).toBe(ExcelJS.ValueType.String);
-    expect(shared.getCell(15).value).toBe(0);
-    expect(shared.getCell(17).value).toBe(false);
+    expect(shared.getCell(column("notes")).value).toBe(source().entries[0].notes);
+    expect(shared.getCell(column("notes")).type).toBe(ExcelJS.ValueType.String);
+    expect(shared.getCell(column("durationMinutes")).value).toBe(0);
+    expect(shared.getCell(column("lateEntry")).value).toBe(false);
   });
 
   it("preserves long special-day plans across continuation columns", async () => {
@@ -123,7 +170,7 @@ describe("report workbook", () => {
     const headers = sheet.getRow(1).values as string[];
     const columns = headers.flatMap((header, index) => header === "tasks" || header.startsWith("tasks (continued") ? [index] : []);
     expect(columns.length).toBeGreaterThan(1);
-    const row = sheet.getRows(2, 5)!.find((item) => item.getCell(12).value === "plan")!;
+    const row = sheet.getRows(2, 5)!.find((item) => item.getCell(5).value === "Holiday")!;
     expect(columns.map((index) => row.getCell(index).value).join("")).toBe(JSON.stringify(input.arrangements[0].tasks));
     for (const index of columns) expect(String(row.getCell(index).value).length).toBeLessThanOrEqual(32_000);
   });
