@@ -761,6 +761,12 @@ test("adds a record to the previous day without labeling it as a late entry", as
   const [year, month, day] = today.split("-").map(Number);
   const previous = new Date(Date.UTC(year, month - 1, day - 1)).toISOString().slice(0, 10);
 
+  // A streamed input can be visible before hydration. A replayable button click
+  // establishes interactivity before exercising the date field's change handler.
+  await page.getByRole("button", { name: "Previous day", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`date=${previous}`));
+  await dateInput.fill(today);
+  await expect(page).toHaveURL(/\/app$/);
   await dateInput.fill(previous);
   await expect(page).toHaveURL(new RegExp(`date=${previous}`));
   await expect(page.getByRole("textbox", { name: "Log date", exact: true })).toHaveValue(previous);

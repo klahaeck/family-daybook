@@ -1,4 +1,4 @@
-import { AppShell, PageHeading } from "@/components/app/app-shell";
+import { PageHeading } from "@/components/app/app-shell";
 import { ReportsView } from "@/components/app/reports-view";
 import { getPageRequestContext, getRepository } from "@/lib/repository";
 
@@ -12,7 +12,7 @@ export default async function ReportsPage() {
     repository.getSettings(context),
   ]);
   return (
-    <AppShell workspace={context.workspace} member={context.member}>
+    <>
       <PageHeading
         eyebrow="Organized review"
         title="Record packages"
@@ -24,6 +24,6 @@ export default async function ReportsPage() {
         workspace={context.workspace}
         canCreate={context.member.role === "owner"}
       />
-    </AppShell>
+    </>
   );
 }

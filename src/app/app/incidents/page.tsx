@@ -1,4 +1,4 @@
-import { AppShell, PageHeading } from "@/components/app/app-shell";
+import { PageHeading } from "@/components/app/app-shell";
 import { IncidentsView } from "@/components/app/incidents-view";
 import { getPageRequestContext, getRepository } from "@/lib/repository";
 
@@ -12,7 +12,7 @@ export default async function IncidentsPage() {
     repository.getSettings(context),
   ]);
   return (
-    <AppShell workspace={context.workspace} member={context.member}>
+    <>
       <PageHeading
         eyebrow="Neutral documentation"
         title="Factual incidents"
@@ -25,6 +25,6 @@ export default async function IncidentsPage() {
         canManage={context.member.role === "owner"}
         canPurge={context.member.role === "owner" && context.workspace.hardDeleteEnabled}
       />
-    </AppShell>
+    </>
   );
 }

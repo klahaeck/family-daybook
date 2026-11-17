@@ -1,7 +1,6 @@
 import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
 import { redirect } from "next/navigation";
 
-import { AppShell } from "@/components/app/app-shell";
 import { TodayDashboard } from "@/components/app/today-dashboard";
 import { isValidLocalDate, localDateInTimezone } from "@/lib/domain/dates";
 import { makeQueryClient } from "@/lib/query-client";
@@ -23,10 +22,8 @@ export default async function Home({ searchParams }: PageProps<"/app">) {
   queryClient.setQueryData(["dashboard", date], data);
 
   return (
-    <AppShell workspace={context.workspace} member={context.member}>
-      <HydrationBoundary state={dehydrate(queryClient)}>
-        <TodayDashboard date={date} today={today} initialData={data} />
-      </HydrationBoundary>
-    </AppShell>
+    <HydrationBoundary state={dehydrate(queryClient)}>
+      <TodayDashboard date={date} today={today} initialData={data} />
+    </HydrationBoundary>
   );
 }

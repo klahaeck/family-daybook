@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 
-import { AppShell, PageHeading } from "@/components/app/app-shell";
+import { PageHeading } from "@/components/app/app-shell";
 import { SpecialArrangementsView } from "@/components/app/special-arrangements-view";
 import { getPageRequestContext, getRepository } from "@/lib/repository";
 
@@ -13,13 +13,13 @@ export default async function SpecialDaysPage() {
   const data = await repository.getSpecialArrangements(context);
 
   return (
-    <AppShell workspace={context.workspace} member={context.member}>
+    <>
       <PageHeading
         eyebrow="Owner only"
         title="Special days"
         description="Plan temporary caregiving arrangements and date-specific tasks without changing the repeating routine."
       />
       <SpecialArrangementsView initialData={data} />
-    </AppShell>
+    </>
   );
 }
