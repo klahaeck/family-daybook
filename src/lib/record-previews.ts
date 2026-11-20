@@ -1,3 +1,4 @@
+import { routineCompletion } from "@/lib/domain/parenting-schedules";
 import { previewQuery, savingRecord, upsertRecord } from "@family-daybook/api-client/record-saving";
 import type { Appointment, CareEntry, DashboardData, Incident, IncidentsData, RecordType, TimelineData, TimelineItem } from "@/lib/domain/types";
 
@@ -19,10 +20,7 @@ export function carePreview(entry: CareEntry, date: string, taskId?: string, dai
     previewQuery<DashboardData>(["dashboard", date], (data, { savedId, confirmed }) => {
       const record = savingRecord(data.recentEntries.find((value) => value.id === savedId) ?? entry, savedId, !confirmed);
       const tasks = data.tasks.map((task) => task.id === taskId || task.entry?.id === entry.id ? { ...task, entry: record } : task);
-      const recorded = tasks.filter((task) => task.entry).length;
-      return { ...data, tasks, recentEntries: upsertRecord(data.recentEntries, record), completion: {
-        recorded, total: tasks.length, percent: tasks.length ? Math.round(recorded / tasks.length * 100) : 0,
-      } };
+      return { ...data, tasks, recentEntries: upsertRecord(data.recentEntries, record), completion: routineCompletion(tasks) };
     }),
     timelinePreview({ id: entry.id, kind: "care", title: entry.taskLabel, description: entry.notes,
       occurredAt: entry.occurredAt, recordedAt: entry.recordedAt, childIds: entry.childIds,

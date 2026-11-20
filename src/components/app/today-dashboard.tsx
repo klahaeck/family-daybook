@@ -150,7 +150,7 @@ export function TodayDashboard({ date, today, initialData }: { date: string; tod
             <CalendarRange className="size-4" />
             Special days
           </Link>
-          <CareEntryDialog date={date} today={today} timezone={data.workspace.timezone} childOptions={data.children} caregivers={data.caregivers} finalized={data.dailyLog.status === "finalized"} />
+          <CareEntryDialog offDayChildIds={data.parentingAssignments?.filter((item) => !item.mine).map((item) => item.childId)} date={date} today={today} timezone={data.workspace.timezone} childOptions={data.children} caregivers={data.caregivers} finalized={data.dailyLog.status === "finalized"} />
         </div>
       </div>
 
@@ -295,7 +295,9 @@ export function TodayDashboard({ date, today, initialData }: { date: string; tod
         </Card>
       </div>
 
+      {data.workspace.parentingSchedules?.some((item) => item.enabled && item.effectiveFrom <= date) && <p className="text-sm text-muted-foreground">{data.parentingAssignments?.every((item) => item.mine) ? "Your scheduled parenting day. Record either parent as the actual caregiver, including shared help." : "Parenting time varies today. Off-day items track only your contributions."}</p>}
       <section aria-labelledby="routine-heading" className="min-w-0 max-w-full">
+        {data.tasks.some((task) => task.optional || task.offDayChildIds?.length) && <p className="mb-4 text-sm text-muted-foreground">Off-day contributions are optional and do not affect completion. Record only your own care on off days; either parent can help on your days.</p>}
         <div className="mb-4 flex items-center justify-between">
           <div>
             <h2 id="routine-heading" className="text-xl font-semibold tracking-tight">
@@ -308,7 +310,7 @@ export function TodayDashboard({ date, today, initialData }: { date: string; tod
           </div>
         </div>
         <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {sortRoutineItemsByTime(data.tasks).map((task) => {
+          {[...sortRoutineItemsByTime(data.tasks.filter((task) => !task.optional)), ...sortRoutineItemsByTime(data.tasks.filter((task) => task.optional))].map((task) => {
             const recorded = Boolean(task.entry);
             const completed = task.entry?.status === "completed";
             const saving = Boolean(task.entry && isRecordSaving(task.entry));
@@ -320,6 +322,7 @@ export function TodayDashboard({ date, today, initialData }: { date: string; tod
                 <span className="min-w-0 flex-1">
                   <span className="flex min-w-0 items-center gap-2">
                     <span className="truncate font-medium">{task.label}</span>
+                    {task.optional && <Badge variant="outline">Off-day contribution</Badge>}
                     {task.entry && (
                       <Badge
                         variant={task.entry.status === "missed" ? "destructive" : "secondary"}
@@ -331,7 +334,7 @@ export function TodayDashboard({ date, today, initialData }: { date: string; tod
                   </span>
                   <span className="mt-1 block truncate text-xs text-muted-foreground">
                     {recorded && task.entry
-                      ? `${childNames(task.entry.childIds, data)} · ${careStatusTimeLabel(task.entry.status).toLowerCase()} ${formatTime(task.entry.occurredAt, data.workspace.timezone)}`
+                      ? `${childNames(task.entry.childIds, data)}${task.entry.caregiverIds.length ? ` · ${caregiverNames(task.entry.caregiverIds, data)}` : ""} · ${careStatusTimeLabel(task.entry.status).toLowerCase()} ${formatTime(task.entry.occurredAt, data.workspace.timezone)}`
                       : `${childNames(task.childIds, data)} · around ${task.suggestedTime}`}
                   </span>
                 </span>

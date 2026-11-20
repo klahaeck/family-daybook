@@ -47,7 +47,15 @@ export type ActionResult<T = undefined> = {
   error?: string;
 };
 
+export interface ParentingSchedule {
+  effectiveFrom: string;
+  anchorDate: string;
+  enabled: boolean;
+  children: Array<{ childId: string; days: Array<"mine" | "other"> }>;
+}
+
 export interface Workspace {
+  parentingSchedules?: ParentingSchedule[];
   id: string;
   name: string;
   timezone: string;
@@ -110,6 +118,7 @@ export interface RoutineTemplate {
 }
 
 export interface DailyLog {
+  parentingAssignments?: Array<{ childId: string; mine: boolean }>;
   id: string;
   workspaceId: string;
   localDate: string;
@@ -326,6 +335,9 @@ export interface PurgeTombstone {
 }
 
 export interface TodayTask {
+  optional?: boolean;
+  offDayChildIds?: string[];
+  allowedCaregiverIds?: string[];
   id: string;
   source: "routine" | "special_arrangement";
   templateItemId?: string;
@@ -342,6 +354,7 @@ export interface TodayTask {
 }
 
 export interface DashboardData {
+  parentingAssignments?: Array<{ childId: string; mine: boolean }>;
   workspace: Workspace;
   member: Member;
   date: string;

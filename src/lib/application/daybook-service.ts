@@ -71,6 +71,7 @@ export interface CareEntryView {
 }
 
 export interface DayView {
+  parentingAssignments?: DashboardData["parentingAssignments"];
   localDate: string;
   status: "open" | "finalized";
   notes?: string;
@@ -212,6 +213,7 @@ export class DaybookService {
           }
         : undefined,
       careEntries: entries,
+      parentingAssignments: dashboard.parentingAssignments,
       completion: dashboard.completion,
     };
   }

@@ -17,9 +17,14 @@ export function carePreview(entry: CareEntry, date: string, taskId?: string) {
     previewQuery<Day>(["day", date], (data, { savedId, confirmed }) => {
       const record = savingRecord(data.careEntries.find((value) => value.id === savedId) ?? entry, savedId, !confirmed);
       const tasks = data.tasks.map((task) => task.id === taskId || task.entryId === entry.id ? { ...task, entryId: record.id, recorded: true } : task);
-      const recorded = tasks.filter((task) => task.recorded).length;
+      const expected = tasks.filter((task) => !task.optional);
+      const recorded = expected.filter((task) => {
+        if (!task.recorded) return false;
+        const entry = task.entryId === record.id ? record : data.careEntries.find((item) => item.id === task.entryId);
+        return !task.offDayChildIds?.length || entry?.childIds.some((id) => !task.offDayChildIds!.includes(id));
+      }).length;
       return { ...data, tasks, careEntries: upsertRecord(data.careEntries, record), completion: {
-        recorded, total: tasks.length, percent: tasks.length ? Math.round(recorded / tasks.length * 100) : 0,
+        recorded, total: expected.length, percent: expected.length ? Math.round(recorded / expected.length * 100) : 0,
       } };
     }),
     previewQuery<RecordBundle>(["record", "care_entry", entry.id], (data, { confirmed }) => confirmed ? data : ({ ...data, record: savingRecord(entry) })),

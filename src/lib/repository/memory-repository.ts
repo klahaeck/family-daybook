@@ -1,3 +1,4 @@
+import { scheduleForDate, applyParentingSchedule, routineCompletion, nextParentingSchedules, parentingAssignments, assertContributionCaregivers } from "@/lib/domain/parenting-schedules";
 import "server-only";
 
 import { assertValidCareEntryDetails } from "@/lib/domain/care-entry-rules";
@@ -119,6 +120,7 @@ function dayVersionForState(data: ParentingState, log: DailyLog): string {
     data.careEntries,
     data.revisions,
     specialArrangement,
+    log.status === "open" ? scheduleForDate(data.workspace, log.localDate) : undefined,
   );
 }
 
@@ -287,7 +289,7 @@ export class MemoryParentingRepository implements ParentingRepository {
       (arrangement) =>
         arrangement.dailyLogId === dailyLog.id && arrangement.status === "active",
     );
-    const tasks: TodayTask[] = specialArrangement
+    const baseTasks: TodayTask[] = specialArrangement
       ? specialArrangement.tasks.map((task) => ({
           id: task.id,
           source: "special_arrangement",
@@ -314,7 +316,7 @@ export class MemoryParentingRepository implements ParentingRepository {
             plannedCaregiverIds: [],
             entry: dayEntries.find((entry) => entry.templateItemId === item.id),
           }));
-    const recorded = tasks.filter((task) => Boolean(task.entry)).length;
+    const tasks = applyParentingSchedule(baseTasks, data.workspace, dailyLog, data.children.filter((child) => child.active).map((child) => child.id), data.caregivers, specialArrangement);
 
     return {
       workspace: context.workspace,
@@ -325,11 +327,8 @@ export class MemoryParentingRepository implements ParentingRepository {
       caregivers: data.caregivers.filter((caregiver) => caregiver.active),
       tasks,
       specialArrangement,
-      completion: {
-        recorded,
-        total: tasks.length,
-        percent: tasks.length ? Math.round((recorded / tasks.length) * 100) : 0,
-      },
+      parentingAssignments: dailyLog.parentingAssignments ?? parentingAssignments(data.workspace, date, data.children.filter((child) => child.active).map((child) => child.id), data.caregivers, specialArrangement),
+      completion: routineCompletion(tasks),
       recentEntries: dayEntries
         .sort(
           (a, b) =>
@@ -612,6 +611,7 @@ export class MemoryParentingRepository implements ParentingRepository {
         }
       : input;
     assertValidCareEntryDetails(normalizedInput);
+    assertContributionCaregivers(dailyLog.parentingAssignments ?? parentingAssignments(data.workspace, dailyLog.localDate, data.children.map((child) => child.id), data.caregivers, data.specialArrangements.find((item) => item.dailyLogId === dailyLog.id && item.status === "active")), input.childIds, input.caregiverIds, data.caregivers);
     if (normalizedInput.templateItemId) {
       const existing = data.careEntries.find(
         (entry) =>
@@ -693,6 +693,7 @@ export class MemoryParentingRepository implements ParentingRepository {
     if (!entry) throw new Error("NOT_FOUND");
     const dailyLog = data.dailyLogs.find((log) => log.id === entry.dailyLogId);
     if (!dailyLog) throw new Error("NOT_FOUND");
+    assertContributionCaregivers(dailyLog.parentingAssignments ?? parentingAssignments(data.workspace, dailyLog.localDate, data.children.map((child) => child.id), data.caregivers, data.specialArrangements.find((item) => item.dailyLogId === dailyLog.id && item.status === "active")), input.childIds, input.caregiverIds, data.caregivers);
     if (dailyLog.status !== "open") throw new Error("DAY_FINALIZED");
     const revision = data.revisions.find(
       (item) => item.id === entry.currentRevisionId,
@@ -763,6 +764,7 @@ export class MemoryParentingRepository implements ParentingRepository {
     if (!entry) throw new Error("NOT_FOUND");
     const dailyLog = data.dailyLogs.find((log) => log.id === entry.dailyLogId);
     if (!dailyLog) throw new Error("NOT_FOUND");
+    assertContributionCaregivers(dailyLog.parentingAssignments ?? parentingAssignments(data.workspace, dailyLog.localDate, data.children.map((child) => child.id), data.caregivers, data.specialArrangements.find((item) => item.dailyLogId === dailyLog.id && item.status === "active")), input.childIds, input.caregiverIds, data.caregivers);
     if (dailyLog.status !== "finalized") throw new Error("DAY_NOT_FINALIZED");
     const previous = data.revisions.find(
       (revision) => revision.id === entry.currentRevisionId,
@@ -1042,6 +1044,7 @@ export class MemoryParentingRepository implements ParentingRepository {
     if (log.status === "finalized") {
       return { ...log, dayVersion: currentVersion };
     }
+    log.parentingAssignments = parentingAssignments(data.workspace, localDate, data.children.filter((child) => child.active).map((child) => child.id), data.caregivers, data.specialArrangements.find((item) => item.localDate === localDate && item.status === "active"));
     log.status = "finalized";
     log.finalizedAt = new Date().toISOString();
     log.finalizedBy = context.member.id;
@@ -1422,6 +1425,7 @@ export class MemoryParentingRepository implements ParentingRepository {
       return replay.result;
     }
     const data = state();
+    data.workspace.parentingSchedules = nextParentingSchedules(data.workspace, input.parentingSchedule, input.children.map((child) => child.id));
     data.workspace.name = input.name;
     data.workspace.timezone = input.timezone;
     data.workspace.hardDeleteEnabled = input.hardDeleteEnabled;

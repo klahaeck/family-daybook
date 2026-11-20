@@ -203,13 +203,16 @@ export function dayVersionFor(
   entries: CareEntry[],
   revisions: RecordRevision[],
   specialArrangement?: SpecialArrangementDay | null,
+  parentingSchedule?: unknown,
 ): string {
   const revisionHashes = new Map(
     revisions.map((revision) => [revision.id, revision.hash]),
   );
   return sha256(
     canonicalJson({
+      ...(parentingSchedule ? { parentingSchedule } : {}),
       log: {
+        ...(log.parentingAssignments ? { parentingAssignments: log.parentingAssignments } : {}),
         id: log.id,
         localDate: log.localDate,
         templateVersion: log.templateVersion,

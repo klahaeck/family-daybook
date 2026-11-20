@@ -1,3 +1,4 @@
+import { scheduleForDate, applyParentingSchedule, routineCompletion, nextParentingSchedules, parentingAssignments, assertContributionCaregivers } from "@/lib/domain/parenting-schedules";
 import "server-only";
 
 import {
@@ -114,6 +115,7 @@ function toDomainDailyLog(log: StoredDailyLog): DailyLog {
     workspaceId: log.workspaceId,
     localDate: log.localDate,
     templateVersion: log.templateVersion,
+    ...(log.parentingAssignments ? { parentingAssignments: log.parentingAssignments } : {}),
     status: log.status,
     ...(log.notes !== undefined ? { notes: log.notes } : {}),
     ...(log.finalizedAt !== undefined ? { finalizedAt: log.finalizedAt } : {}),
@@ -255,6 +257,22 @@ function normalizeArrangementFields(
 }
 
 export class MongoParentingRepository implements ParentingRepository {
+  private async assignmentsForLog(context: RequestContext, log: DailyLog) {
+    if (log.parentingAssignments) return log.parentingAssignments;
+    const [children, caregivers, arrangement] = await Promise.all([
+      (await col<Child>("children")).find({ workspaceId: context.workspace.id }).toArray(),
+      (await col<Caregiver>("caregivers")).find({ workspaceId: context.workspace.id }).toArray(),
+      (await col<SpecialArrangementDay>("specialArrangementDays")).findOne({ workspaceId: context.workspace.id, dailyLogId: log.id, status: "active" }),
+    ]);
+    return parentingAssignments(context.workspace, log.localDate, children.map((child) => child.id), caregivers, arrangement);
+  }
+
+  private async assertContribution(context: RequestContext, logId: string, input: { childIds: string[]; caregiverIds: string[] }) {
+    const log = await (await col<DailyLog>("dailyLogs")).findOne({ id: logId, workspaceId: context.workspace.id });
+    if (!log) throw new Error("NOT_FOUND");
+    const caregivers = await (await col<Caregiver>("caregivers")).find({ workspaceId: context.workspace.id }).toArray();
+    assertContributionCaregivers(await this.assignmentsForLog(context, log), input.childIds, input.caregiverIds, caregivers);
+  }
   private indexesReady?: Promise<void>;
 
   private ensureReady() {
@@ -424,7 +442,7 @@ export class MongoParentingRepository implements ParentingRepository {
       status: "active",
     });
     const weekday = weekdayForLocalDate(date);
-    const tasks: TodayTask[] = specialArrangement
+    const baseTasks: TodayTask[] = specialArrangement
       ? specialArrangement.tasks.map((task) => ({
           id: task.id,
           source: "special_arrangement",
@@ -451,7 +469,7 @@ export class MongoParentingRepository implements ParentingRepository {
             plannedCaregiverIds: [],
             entry: dayEntries.find((entry) => entry.templateItemId === item.id),
           }));
-    const recorded = tasks.filter((task) => Boolean(task.entry)).length;
+    const tasks = applyParentingSchedule(baseTasks, context.workspace, dailyLog, children.map((child) => child.id), caregivers, specialArrangement);
     return toPlainData({
       workspace: context.workspace,
       member: context.member,
@@ -461,11 +479,8 @@ export class MongoParentingRepository implements ParentingRepository {
       caregivers,
       tasks,
       specialArrangement: specialArrangement ?? undefined,
-      completion: {
-        recorded,
-        total: tasks.length,
-        percent: tasks.length ? Math.round((recorded / tasks.length) * 100) : 0,
-      },
+      parentingAssignments: dailyLog.parentingAssignments ?? parentingAssignments(context.workspace, date, children.map((child) => child.id), caregivers, specialArrangement),
+      completion: routineCompletion(tasks),
       recentEntries: dayEntries,
     });
   }
@@ -712,6 +727,7 @@ export class MongoParentingRepository implements ParentingRepository {
       toPlainData(entries),
       toPlainData(revisions),
       toPlainData(specialArrangement),
+      log.status === "open" ? scheduleForDate(context.workspace, log.localDate) : undefined,
     );
   }
 
@@ -811,6 +827,7 @@ export class MongoParentingRepository implements ParentingRepository {
         }
       : input;
     assertValidCareEntryDetails(normalizedInput);
+    await this.assertContribution(context, log.id, input);
     const findExistingRoutine = async (
       session?: ClientSession,
     ): Promise<CareEntryWriteResult | null> => {
@@ -966,6 +983,7 @@ export class MongoParentingRepository implements ParentingRepository {
       workspaceId: context.workspace.id,
     });
     if (!entry) throw new Error("NOT_FOUND");
+    await this.assertContribution(context, entry.dailyLogId, input);
     const revision = await (await col<RecordRevision>("recordRevisions")).findOne({
       id: entry.currentRevisionId,
       workspaceId: context.workspace.id,
@@ -1081,6 +1099,7 @@ export class MongoParentingRepository implements ParentingRepository {
       workspaceId: context.workspace.id,
     });
     if (!entry) throw new Error("NOT_FOUND");
+    await this.assertContribution(context, entry.dailyLogId, input);
     const dailyLog = await (await col<DailyLog>("dailyLogs")).findOne({
       id: entry.dailyLogId,
       workspaceId: context.workspace.id,
@@ -1358,6 +1377,7 @@ export class MongoParentingRepository implements ParentingRepository {
     if (replay.found) return replay.result;
     const log = await this.ensureDailyLog(context, localDate);
     const finalizedAt = new Date().toISOString();
+    const assignments = await this.assignmentsForLog(context, log);
     return this.operationMutation(context, async (session) => {
       const { log: currentLog, version: currentVersion } =
         await this.assertDayVersion(
@@ -1384,7 +1404,7 @@ export class MongoParentingRepository implements ParentingRepository {
           workspaceId: context.workspace.id,
           status: "open",
         },
-        { $set: { status: "finalized", finalizedAt, finalizedBy: context.member.id } },
+        { $set: { status: "finalized", finalizedAt, finalizedBy: context.member.id, parentingAssignments: assignments } },
         { session },
       );
       if (!finalized.matchedCount) throw new Error("CONFIRMATION_STALE");
@@ -1397,6 +1417,7 @@ export class MongoParentingRepository implements ParentingRepository {
       );
       const resultLog = {
         ...toDomainDailyLog(currentLog),
+        parentingAssignments: assignments,
         status: "finalized" as const,
         finalizedAt,
         finalizedBy: context.member.id,
@@ -1991,6 +2012,7 @@ export class MongoParentingRepository implements ParentingRepository {
     }
     const nextWorkspace = {
       ...context.workspace,
+      parentingSchedules: nextParentingSchedules(context.workspace, input.parentingSchedule, input.children.map((child) => child.id)),
       name: input.name,
       timezone: input.timezone,
       hardDeleteEnabled: input.hardDeleteEnabled,
@@ -2001,6 +2023,7 @@ export class MongoParentingRepository implements ParentingRepository {
         { id: context.workspace.id },
         {
           $set: {
+            ...(nextWorkspace.parentingSchedules ? { parentingSchedules: nextWorkspace.parentingSchedules } : {}),
             name: nextWorkspace.name,
             timezone: nextWorkspace.timezone,
             hardDeleteEnabled: nextWorkspace.hardDeleteEnabled,
@@ -2725,6 +2748,7 @@ export class MongoParentingRepository implements ParentingRepository {
       toPlainData(entries),
       toPlainData(revisions),
       toPlainData(specialArrangement),
+      log.status === "open" ? scheduleForDate(context.workspace, log.localDate) : undefined,
     );
   }
 

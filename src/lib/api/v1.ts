@@ -180,6 +180,8 @@ export async function apiIdentity() {
 }
 
 const safeMessages: Record<string, string> = {
+  SCHEDULE_CANNOT_CHANGE_PAST_DAYS: "Schedule changes must take effect today or later.",
+  OFF_DAY_CONTRIBUTIONS_MUST_BE_YOURS: "On off days, record only your own contributions.",
   UNAUTHENTICATED: "Sign in to continue.",
   API_AUTH_UNAVAILABLE: "Mobile API authentication is not configured.",
   MOBILE_API_DISABLED: "The mobile API is not enabled.",
@@ -243,6 +245,8 @@ function statusFor(code: string): number {
   }
   if (
     code === "VALIDATION_ERROR" ||
+    code === "SCHEDULE_CANNOT_CHANGE_PAST_DAYS" ||
+    code === "OFF_DAY_CONTRIBUTIONS_MUST_BE_YOURS" ||
     code.startsWith("INVALID_") ||
     code.startsWith("ATTACHMENT_")
   ) {

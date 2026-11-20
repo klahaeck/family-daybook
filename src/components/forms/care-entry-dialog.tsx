@@ -33,6 +33,7 @@ export function CareEntryDialog({
   childOptions,
   caregivers,
   finalized = false,
+  offDayChildIds = [],
   trigger,
 }: {
   task?: TodayTask;
@@ -42,6 +43,7 @@ export function CareEntryDialog({
   childOptions: Child[];
   caregivers: Caregiver[];
   finalized?: boolean;
+  offDayChildIds?: string[];
   trigger?: React.ReactElement;
 }) {
   const editing = Boolean(task?.entry);
@@ -61,6 +63,8 @@ export function CareEntryDialog({
   const [files, setFiles] = useState<File[]>([]);
   const [serverError, setServerError] = useState<string>();
   const recordsProvidedCare = careStatusRecordsProvidedCare(status);
+  const offDay = task?.optional || selectedChildren.some((id) => offDayChildIds.includes(id) || task?.offDayChildIds?.includes(id));
+  const availableCaregivers = offDay ? caregivers.filter((caregiver) => caregiver.isOwner) : caregivers;
 
   const defaultTime = task?.entry
     ? toDateTimeLocalInTimezone(new Date(task.entry.occurredAt), timezone)
@@ -95,7 +99,7 @@ export function CareEntryDialog({
       const input = careEntrySchema.parse({
         localDate: date, templateItemId: task?.templateItemId, arrangementTaskId: task?.arrangementTaskId,
         taskKey: task?.taskKey ?? "custom", taskLabel: task?.label ?? formData.get("taskLabel")?.toString(),
-        childIds: selectedChildren, caregiverIds: recordsProvidedCare ? selectedCaregivers : [], status,
+        childIds: selectedChildren, caregiverIds: recordsProvidedCare ? selectedCaregivers.filter((id) => availableCaregivers.some((caregiver) => caregiver.id === id)) : [], status,
         occurredAt: localDateTimeToUtc(formData.get("occurredAt")!.toString(), timezone),
         durationMinutes: recordsProvidedCare && formData.get("durationMinutes")?.toString() ? Number(formData.get("durationMinutes")) : undefined,
         activityType: recordsProvidedCare ? formData.get("activityType")?.toString() || undefined : undefined,
@@ -172,7 +176,7 @@ export function CareEntryDialog({
             {recordsProvidedCare ? (
               <MultiCheck
                 label="Who provided the care?"
-                values={caregivers.map((caregiver) => ({ ...caregiver, secondary: caregiver.relationship }))}
+                values={availableCaregivers.map((caregiver) => ({ ...caregiver, secondary: caregiver.relationship }))}
                 selected={selectedCaregivers}
                 onChange={setSelectedCaregivers}
               />
@@ -240,7 +244,7 @@ export function CareEntryDialog({
               disabled={
                 mutation.isPending ||
                 selectedChildren.length === 0 ||
-                (recordsProvidedCare && selectedCaregivers.length === 0)
+                (recordsProvidedCare && !selectedCaregivers.some((id) => availableCaregivers.some((caregiver) => caregiver.id === id)))
               }
             >
               {mutation.isPending ? <Clock3 className="size-4 animate-spin" /> : <Check className="size-4" />}

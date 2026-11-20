@@ -1,7 +1,8 @@
+import { ParentingScheduleEditor } from "@/components/parenting-schedule-editor";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Alert, StyleSheet, Text, View } from "react-native";
-import type { Settings } from "@family-daybook/contracts";
+import type { ParentingSchedule, Settings } from "@family-daybook/contracts";
 
 import { AppearancePicker } from "@/components/appearance-picker";
 import { SettingsSectionTabs, type SettingsSection } from "@/components/settings-section-tabs";
@@ -61,6 +62,12 @@ function SettingsEditor({ settings, canManageReviewers }: { settings: Settings; 
   const [children, setChildren] = useState<EditableChild[]>(initial.children);
   const [caregivers, setCaregivers] = useState<EditableCaregiver[]>(initial.caregivers);
   const [routines, setRoutines] = useState<EditableRoutine[]>(initial.routines);
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+  const [scheduleChanged, setScheduleChanged] = useState(false);
+  const [parentingSchedule, setParentingSchedule] = useState<ParentingSchedule | undefined>(() => {
+    const latest = settings.workspace.parentingSchedules?.at(-1);
+    return latest ? { ...latest, effectiveFrom: latest.effectiveFrom < today ? today : latest.effectiveFrom } : undefined;
+  });
   const [section, setSection] = useState<SettingsSection>("family");
   const [saveMessage, setSaveMessage] = useState<string>();
   const [reviewerName, setReviewerName] = useState("");
@@ -77,7 +84,7 @@ function SettingsEditor({ settings, canManageReviewers }: { settings: Settings; 
   };
 
   const update = useMutation({
-    mutationFn: () => api.updateSettings({ name, timezone, hardDeleteEnabled, children, caregivers, routineItems: routines }),
+    mutationFn: () => api.updateSettings({ parentingSchedule: scheduleChanged ? parentingSchedule : undefined, name, timezone, hardDeleteEnabled, children, caregivers, routineItems: routines }),
     onMutate: () => setSaveMessage(undefined),
     onSuccess: async (saved) => {
       applySavedSettings(saved);
@@ -86,6 +93,7 @@ function SettingsEditor({ settings, canManageReviewers }: { settings: Settings; 
         queryClient.invalidateQueries({ queryKey: ["session"] }),
         queryClient.invalidateQueries({ queryKey: ["day"] }),
       ]);
+      setScheduleChanged(false);
       setSaveMessage("Settings saved.");
     },
   });
@@ -171,6 +179,7 @@ function SettingsEditor({ settings, canManageReviewers }: { settings: Settings; 
       </> : null}
 
       {section === "routine" ? <>
+        <ParentingScheduleEditor value={parentingSchedule} onChange={(value) => { setParentingSchedule(value); setScheduleChanged(true); }} childOptions={children} today={today} />
         <Card accent>
           <View style={styles.sectionHeader}>
             <View style={styles.sectionHeaderCopy}>

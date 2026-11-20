@@ -1,3 +1,4 @@
+import { applyParentingSchedule } from "@/lib/domain/parenting-schedules";
 import "server-only";
 
 import { z } from "zod";
@@ -257,14 +258,14 @@ async function resolveDay(
   const settings = await repository.getSettings(context);
   const weekday = weekdayForLocalDate(localDate);
   return {
-    tasks: settings.template.items
+    tasks: applyParentingSchedule(settings.template.items
       .filter((item) => item.active && item.weekdays.includes(weekday))
       .map((item) => ({
         ...item,
         source: "routine" as const,
         templateItemId: item.id,
         plannedCaregiverIds: [],
-      })),
+      })), settings.workspace, { id: "", workspaceId: settings.workspace.id, localDate, templateVersion: settings.template.version, status: "open" }, settings.children.filter((child) => child.active).map((child) => child.id), settings.caregivers),
     templateVersion: settings.template.version,
     status: "open",
     specialArrangement: false,
@@ -467,7 +468,8 @@ export async function planRoutineRecording(
 
   let caregiverIds = values.caregiverIds;
   let localTime = values.localTime;
-  const activeCaregivers = settings.caregivers.filter((caregiver) => caregiver.active);
+  const includesOffDayChild = task.optional || childIds?.some((id) => task.offDayChildIds?.includes(id));
+  const activeCaregivers = settings.caregivers.filter((caregiver) => caregiver.active && (!includesOffDayChild || caregiver.isOwner));
   if (values.status === "completed" || values.status === "partial") {
     if (activeCaregivers.length === 0) {
       validationError("caregiverIds", "No active caregiver is available.");
