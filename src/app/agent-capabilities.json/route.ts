@@ -13,10 +13,10 @@ export function GET() {
 
   return Response.json(
     {
-      schemaVersion: "1.1.0",
+      schemaVersion: "1.2.0",
       name: "Family Daybook",
       description:
-        "Private family recordkeeping with factual entries, visible correction history, report packages, reviewer access, and authorized MCP tools.",
+        "Private family recordkeeping with factual entries, optional parenting rotations, visible correction history, report packages, reviewer access, and authorized MCP tools.",
       publisher: {
         name: "Family Daybook",
         url: url("/"),

@@ -66,6 +66,7 @@ describe("authorized daybook service", () => {
     });
     expect(result.caregivers[0]).toEqual({
       caregiverId: expect.any(String),
+      isOwner: expect.any(Boolean),
       displayName: expect.any(String),
       relationship: expect.any(String),
     });

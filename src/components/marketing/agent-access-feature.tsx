@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { DAYBOOK_TOOL_CATALOG } from "@/lib/mcp/catalog";
 import { ArrowRight, Bot, Check, ShieldCheck } from "lucide-react";
 
 import { buttonVariants } from "@/components/ui/button";
@@ -23,10 +24,10 @@ export function AgentAccessFeature() {
               A compatible assistant can help without bypassing your safeguards.
             </h2>
             <p className="mt-4 max-w-3xl text-lg leading-8 text-muted-foreground">
-              OAuth scopes separate read, write, and finalization access. Workspace checks still apply, and finalized corrections require a preview followed by confirmation.
+              An assistant can read your parenting schedule, configure rotations, and record care without confusing plans with actual contributions. OAuth scopes separate read, write, and finalization access. Workspace checks still apply, and finalized corrections require a preview followed by confirmation.
             </p>
             <div className="mt-5 flex flex-wrap gap-4 text-sm font-medium text-foreground/80">
-              <span className="inline-flex items-center gap-2"><Check className="size-4 text-primary" aria-hidden="true" />Ten focused tools</span>
+              <span className="inline-flex items-center gap-2"><Check className="size-4 text-primary" aria-hidden="true" />{DAYBOOK_TOOL_CATALOG.length} focused tools</span>
               <span className="inline-flex items-center gap-2"><ShieldCheck className="size-4 text-primary" aria-hidden="true" />Version-safe changes</span>
             </div>
           </div>

@@ -87,6 +87,8 @@ On your days, record the actual caregiver (you, the other parent, or both). Off-
 
 Changes take effect today or later. Earlier schedule versions remain available, and finalization snapshots each child's planned responsibility. Scheduling is optional and does not rewrite existing care records or report snapshots. Disable it from a chosen effective date to return to the ordinary routine checklist. Timed handovers and tracking the other parent's off-day care are not supported.
 
+MCP owners can read rotations with `get_parenting_schedule` and set or disable a version with `update_parenting_schedule`. Fetch the current `scheduleVersion` first and provide a unique `operationId` when updating. `get_day` exposes per-child assignments and optional routine metadata; recording tools enforce the same caregiver restrictions as the app.
+
 ## Data integrity model
 
 Care records and special arrangements are editable while their daily log is open. Finalization locks the current revision; later changes create a new correction containing the previous revision ID, reason, author, server timestamp, and a hash of the canonical payload plus the previous hash. Reports capture the included revision and attachment IDs at creation time. Special arrangements are planned context, not evidence that care occurred.
@@ -125,8 +127,8 @@ Invited reviewers inherit the workspace owner's billing access. A reviewer is ne
 
 The remote MCP endpoint is `https://www.myfamilydaybook.com/mcp`. Public connection guidance is available at `/agent-access`, with a machine-readable summary at `/agent-capabilities.json`. The endpoint uses stateless Streamable HTTP, Clerk OAuth, the same MongoDB workspace membership and billing checks as the web app, and these custom Clerk scopes:
 
-- `daybook:read` for context, days, records, and revision history
-- `daybook:write` for open-day entries/notes and confirmed finalized-record corrections
+- `daybook:read` for context, days, records, revision history, and owner-only parenting schedules
+- `daybook:write` for open-day entries/notes, owner-only parenting schedule updates, and confirmed finalized-record corrections
 - `daybook:finalize` for previewing and confirming day finalization
 
 Configure Clerk before connecting a client:

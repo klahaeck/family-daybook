@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 
-test("public homepage presents the Family Daybook brochure", async ({ page }) => {
+test("public homepage presents the Family Daybook brochure", async ({ page }, testInfo) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "A calmer way to keep the days that matter clear." })).toBeVisible();
   await expect(page.locator('[aria-label="Example Family Daybook dashboard"]')).toBeVisible();
@@ -17,6 +17,9 @@ test("public homepage presents the Family Daybook brochure", async ({ page }) =>
   await expect(page.getByRole("link", { name: "Agent access", exact: true }).first()).toHaveAttribute("href", "/agent-access");
   await expect(page.getByRole("link", { name: "Support", exact: true })).toHaveAttribute("href", "/support");
   await expect(page.getByText(/local demo workspace/i)).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Routines for your parenting days" })).toBeVisible();
+  await expect(page.getByText(/other parent does not need an account/)).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("brochure-parenting-schedules.png"), fullPage: true });
   const jsonLd = await page.locator('script[type="application/ld+json"]').textContent();
   expect(JSON.parse(jsonLd ?? "{}")["@graph"]).toHaveLength(3);
 });
@@ -108,8 +111,8 @@ test("agent access documents the live catalog and safety contract", async ({ pag
   await page.goto("/agent-access");
   await expect(page.getByRole("heading", { name: "Let an authorized assistant help with the daybook." })).toBeVisible();
   await expect(page.getByText("http://127.0.0.1:3100/mcp", { exact: true })).toBeVisible();
-  await expect(page.locator("code", { hasText: /^get_/ })).toHaveCount(3);
-  await expect(page.locator("code", { hasText: /^create_|^update_|^preview_|^confirm_/ })).toHaveCount(7);
+  await expect(page.locator("#tools-heading").locator("..").locator("code", { hasText: /^get_/ })).toHaveCount(4);
+  await expect(page.locator("#tools-heading").locator("..").locator("code", { hasText: /^create_|^update_|^preview_|^confirm_/ })).toHaveCount(8);
   await expect(page.locator("code", { hasText: /^record_/ })).toHaveCount(1);
   await expect(page.getByRole("heading", { name: "“Mark bedtime story done.”" })).toBeVisible();
   await expect(page.getByText(/cannot cross workspace boundaries/i)).toBeVisible();
@@ -177,7 +180,7 @@ test("public routes expose the intended crawler metadata", async ({ page, reques
   expect(capabilities.headers()["access-control-allow-origin"]).toBe("*");
   const capabilityBody = await capabilities.json();
   expect(capabilityBody.mcp.endpoint).toBe("http://127.0.0.1:3100/mcp");
-  expect(capabilityBody.tools).toHaveLength(11);
+  expect(capabilityBody.tools).toHaveLength(13);
 
   const llms = await request.get("/llms.txt");
   expect(llms.ok()).toBe(true);

@@ -37,7 +37,7 @@ export const metadata: Metadata = {
   openGraph: { title, description, url: "/agent-access" },
 };
 
-const groups = ["Context and records", "Open-day updates", "Protected final changes"] as const;
+const groups = [...new Set(DAYBOOK_TOOL_CATALOG.map((tool) => tool.group))];
 
 const safeguards = [
   {
@@ -133,8 +133,16 @@ export default async function AgentAccessPage() {
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-primary">Routine example</p>
             <h2 id="routine-example-heading" className="mt-3 text-2xl font-semibold">“Mark bedtime story done.”</h2>
             <p className="mt-3 max-w-3xl leading-7 text-muted-foreground">
-              The assistant can resolve the routine by name, then ask only for required details such as the date, caregiver, and actual local time. It creates nothing until those answers are complete.
+              The assistant can resolve the routine by name, then ask only for required details such as the date, caregiver, and actual local time. It creates nothing until those answers are complete. With a parenting rotation enabled, off-day tasks are optional and only your own contributions can be recorded; on your days either parent can be credited for help.
             </p>
+          </div>
+        </section>
+
+        <section className="px-4 py-12 sm:px-6 lg:px-8" aria-labelledby="schedule-example-heading">
+          <div className="mx-auto max-w-5xl">
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-primary">Parenting schedule example</p>
+            <h2 id="schedule-example-heading" className="mt-3 text-2xl font-semibold">Plan parenting time without assuming care happened.</h2>
+            <p className="mt-3 max-w-3xl leading-7 text-muted-foreground">Ask your assistant to set alternating weeks or a 2-2-3 rotation for each child. It reads the current schedule and child references with <code>get_parenting_schedule</code>, then uses <code>update_parenting_schedule</code> with your chosen effective date and the returned version. Changes start today or later; earlier versions and finalized assignments remain intact. The other parent needs no account.</p>
           </div>
         </section>
 
@@ -156,7 +164,7 @@ export default async function AgentAccessPage() {
         <section className="px-4 py-16 sm:px-6 sm:py-20 lg:px-8" aria-labelledby="tools-heading">
           <div className="mx-auto max-w-5xl">
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-primary">Tool catalog</p>
-            <h2 id="tools-heading" className="mt-4 text-3xl font-semibold tracking-tight sm:text-4xl">Eleven tools with bounded responsibilities.</h2>
+            <h2 id="tools-heading" className="mt-4 text-3xl font-semibold tracking-tight sm:text-4xl">{DAYBOOK_TOOL_CATALOG.length} tools with bounded responsibilities.</h2>
             <p className="mt-4 max-w-3xl leading-7 text-muted-foreground">Tool names and descriptions below are generated from the same catalog used by the live MCP server.</p>
             <div className="mt-10 space-y-10">
               {groups.map((group) => (

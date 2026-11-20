@@ -10,7 +10,7 @@ import "./globals.css";
 
 const title = "Family Daybook";
 const description =
-  "Family Daybook is a private family recordkeeping app for caregiving, appointments, factual notes, and an organized family timeline.";
+  "Family Daybook is a private family recordkeeping app for caregiving, optional parenting rotations, appointments, factual notes, and an organized family timeline.";
 const appEnvironment = getAppEnvironment();
 const isProduction = appEnvironment === "production";
 

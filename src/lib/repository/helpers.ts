@@ -1,5 +1,6 @@
 import type {
   Appointment,
+  ParentingSchedule,
   CareEntry,
   DailyLog,
   Incident,
@@ -12,6 +13,10 @@ import { careStatusRecordsProvidedCare } from "@/lib/domain/care-entry-rules";
 import type { WorkspaceSettingsInput } from "@/lib/domain/schemas";
 import { lateEntryFor, localDateTimeToUtc } from "@/lib/domain/dates";
 import { canonicalJson, id, sha256 } from "@/lib/domain/integrity";
+
+export function parentingScheduleVersion(schedules: ParentingSchedule[] = []): string {
+  return sha256(canonicalJson(schedules));
+}
 
 export function requireOwner(role: string): void {
   if (role !== "owner") throw new Error("FORBIDDEN");

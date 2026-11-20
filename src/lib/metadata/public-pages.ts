@@ -2,7 +2,7 @@ export const PUBLIC_PAGES = [
   {
     path: "/",
     title: "Family Daybook",
-    description: "Private, factual family recordkeeping.",
+    description: "Private, factual family recordkeeping with optional parenting rotations.",
     changeFrequency: "monthly",
     priority: 1,
   },
@@ -16,7 +16,7 @@ export const PUBLIC_PAGES = [
   {
     path: "/co-parenting-recordkeeping",
     title: "Co-parenting recordkeeping",
-    description: "Private recordkeeping for separated and co-parenting families.",
+    description: "Private recordkeeping and parenting rotations for separated and co-parenting families.",
     changeFrequency: "monthly",
     priority: 0.8,
   },

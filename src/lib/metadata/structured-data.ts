@@ -36,7 +36,7 @@ export function homeStructuredData(siteUrl: URL) {
         applicationCategory: "LifestyleApplication",
         operatingSystem: "Web",
         description:
-          "Private family recordkeeping with factual entries, visible corrections, report packages, reviewer access, and authorized MCP tools.",
+          "Private family recordkeeping with factual entries, optional parenting rotations, visible corrections, report packages, reviewer access, and authorized MCP tools.",
         publisher: { "@id": absolute(siteUrl, publisherId) },
       },
     ],

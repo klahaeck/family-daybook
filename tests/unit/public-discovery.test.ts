@@ -51,8 +51,9 @@ describe("public discovery surfaces", () => {
       endpoint: `${origin}/mcp`,
       transport: "streamable-http",
     });
-    expect(body.schemaVersion).toBe("1.1.0");
-    expect(body.tools).toHaveLength(11);
+    expect(body.schemaVersion).toBe("1.2.0");
+    expect(body.tools).toHaveLength(13);
+    expect(body.tools.map((tool: { name: string }) => tool.name)).toEqual(expect.arrayContaining(["get_parenting_schedule", "update_parenting_schedule"]));
     expect(body.tools.map((tool: { name: string }) => tool.name)).toEqual(
       DAYBOOK_TOOL_CATALOG.map((tool) => tool.name),
     );
@@ -70,6 +71,8 @@ describe("public discovery surfaces", () => {
     expect(body).toContain(`${origin}/agent-capabilities.json`);
     expect(body).toContain(`${origin}/features/record-integrity`);
     expect(body).toContain("navigation aid");
+    expect(body).toContain("optional parenting rotations");
+    expect(body).toContain("update_parenting_schedule");
   });
 
   it("keeps sitemap and robots generated from the public contract", () => {
@@ -145,7 +148,7 @@ describe("public discovery surfaces", () => {
     expect(metadata).toMatchObject({
       name: "com.myfamilydaybook/family-daybook",
       title: "Family Daybook",
-      version: "1.1.0",
+      version: "1.2.0",
       remotes: [
         {
           type: "streamable-http",

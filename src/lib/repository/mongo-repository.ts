@@ -25,6 +25,7 @@ import {
 } from "@/lib/domain/integrity";
 import type {
   Appointment,
+  ParentingSchedule,
   Attachment,
   AuditEvent,
   CareEntry,
@@ -63,6 +64,7 @@ import type {
 import type { Identity } from "@/lib/auth/identity";
 import { createSeedState } from "./seed";
 import {
+  parentingScheduleVersion,
   arrangementForChildren,
   assertActiveReferenceIds,
   assertReportRevisionCoverage,
@@ -2000,6 +2002,22 @@ export class MongoParentingRepository implements ParentingRepository {
         { $set: { status: "failed", error } },
         { session },
       );
+    });
+  }
+
+  async updateParentingSchedule(context: RequestContext, schedule: ParentingSchedule, scheduleVersion: string) {
+    requireOwner(context.member.role);
+    const replay = await this.operationReplay<{ schedules: ParentingSchedule[]; scheduleVersion: string }>(context);
+    if (replay.found) return replay.result;
+    return this.operationMutation(context, async (session) => {
+      const workspace = await (await col<Workspace>("workspaces")).findOne({ id: context.workspace.id }, { session });
+      if (!workspace) throw new Error("NOT_FOUND");
+      if (parentingScheduleVersion(workspace.parentingSchedules) !== scheduleVersion) throw new Error("VERSION_CONFLICT");
+      const children = await (await col<Child>("children")).find({ workspaceId: workspace.id, active: true }, { session }).toArray();
+      const schedules = nextParentingSchedules(workspace, schedule, children.map((child) => child.id))!;
+      await (await col<Workspace>("workspaces")).updateOne({ id: workspace.id }, { $set: { parentingSchedules: schedules, updatedAt: new Date().toISOString() } }, { session });
+      await this.insertAudit(context, "settings_changed", "workspace", workspace.id, session);
+      return { schedules, scheduleVersion: parentingScheduleVersion(schedules) };
     });
   }
 

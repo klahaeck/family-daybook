@@ -16,6 +16,7 @@ import {
 } from "@/lib/domain/integrity";
 import type {
   Appointment,
+  ParentingSchedule,
   Attachment,
   AuditEvent,
   CareEntry,
@@ -49,6 +50,7 @@ import type {
 } from "@/lib/domain/schemas";
 import { createSeedState, type ParentingState } from "./seed";
 import {
+  parentingScheduleVersion,
   arrangementForChildren,
   assertActiveReferenceIds,
   assertReportRevisionCoverage,
@@ -1412,6 +1414,22 @@ export class MemoryParentingRepository implements ParentingRepository {
     if (!report) throw new Error("NOT_FOUND");
     if (report.status === "ready") return;
     Object.assign(report, { status: "failed" as const, error });
+  }
+
+  async updateParentingSchedule(context: RequestContext, schedule: ParentingSchedule, scheduleVersion: string) {
+    requireOwner(context.member.role);
+    const replay = this.operationReplay<{ schedules: ParentingSchedule[]; scheduleVersion: string }>(context);
+    if (replay.found) return replay.result;
+    const data = state();
+    if (parentingScheduleVersion(data.workspace.parentingSchedules) !== scheduleVersion) throw new Error("VERSION_CONFLICT");
+    const schedules = nextParentingSchedules(data.workspace, schedule, data.children.filter((child) => child.active).map((child) => child.id))!;
+    data.workspace.parentingSchedules = schedules;
+    data.workspace.updatedAt = new Date().toISOString();
+    context.workspace = data.workspace;
+    await this.audit(context, "settings_changed", "workspace", data.workspace.id);
+    const result = { schedules, scheduleVersion: parentingScheduleVersion(schedules) };
+    this.recordOperation(context, result);
+    return result;
   }
 
   async updateSettings(
