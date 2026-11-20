@@ -7,7 +7,7 @@ This is the reviewer-ready content for a **With MCP** remote MCP-only submission
 - **Plugin name:** Family Daybook
 - **Publisher identity:** Family Daybook
 - **Short description:** Keep authorized family records clear with private, permissioned MCP tools.
-- **Long description:** Connect Family Daybook to a compatible assistant through OAuth. The assistant can read authorized daybook context and finalized history, update records while a day is open, and prepare corrections or finalization for explicit confirmation. Workspace, role, subscription, validation, version, and revision-history protections remain enforced.
+- **Long description:** Connect Family Daybook to a compatible assistant through OAuth. The assistant can read authorized daybook context and finalized history, configure optional parenting rotations, distinguish expected routines from off-day contributions, update records while a day is open, and prepare corrections or finalization for explicit confirmation. Workspace, role, subscription, validation, version, and revision-history protections remain enforced.
 - **Category:** Productivity
 - **Website:** `https://www.myfamilydaybook.com/agent-access`
 - **Support:** `https://www.myfamilydaybook.com/support`
@@ -27,6 +27,8 @@ Use only a verified publisher identity whose displayed name is **Family Daybook*
 4. “Update today’s day notes with this summary after fetching the current day version.”
 5. “Preview a correction to this finalized care entry, show me every changed field, and wait for my confirmation.”
 6. “Preview finalizing today’s daybook and show the exact summary before asking me to confirm.”
+
+7. “Set alternating parenting weeks for each child starting today. Ask me which parent starts the cycle.”
 
 ## Positive tests
 
@@ -72,6 +74,13 @@ Use only a verified publisher identity whose displayed name is **Family Daybook*
 - **Expected result:** A finalization preview and confirmation request, with no data changed.
 - **Fixture:** Synthetic owner workspace with an open day containing at least one entry.
 
+### 7. Configure a parenting rotation
+
+- **Prompt:** “Set a 2-2-3 parenting rotation starting today.”
+- **Expected behavior:** Call `get_parenting_schedule` for active child IDs, timezone, local date, and `scheduleVersion`. Ask who starts and which children follow the pattern. Call `update_parenting_schedule` with the agreed 14-day cycle, effective date, anchor date, fresh version, and a unique operation ID.
+- **Expected result:** `get_day` distinguishes expected routines from optional off-day contributions. The other parent needs no account. The assistant never infers actual care from assignments.
+- **Fixture:** Synthetic owner workspace with no existing schedule.
+
 ## Negative tests
 
 ### 1. Cross-workspace identifier
@@ -92,9 +101,14 @@ Use only a verified publisher identity whose displayed name is **Family Daybook*
 - **Expected behavior:** Fetch fresh authorized context where possible; otherwise return not found or version conflict and make no change.
 - **Why:** Guessed identifiers and stale writes could target the wrong state.
 
+### 4. Schedule permissions and contribution limits
+
+- **Scenario:** A reviewer requests a schedule read/update, an owner supplies a stale schedule version or past effective date, or an off-day entry credits the other parent.
+- **Expected behavior:** Reject with forbidden, version conflict, backdating, or contribution-validation errors without changing data. Unrecorded optional routines must never be described as missed care.
+
 ## Review account and release notes
 
 - Create a dedicated synthetic owner workspace with all three OAuth scopes and no real family records.
 - Provide credentials only in the private submission portal. Do not place credentials in the repository, public website, release notes, analytics, or application logs.
 - The account must work without MFA, SMS, email confirmation, or private-network access during review. Disable or rotate it after review.
-- **Release note:** “Family Daybook MCP 1.1 adds named routine recording with native form elicitation and structured conversational fallback across eleven OAuth-protected tools.”
+- **Release note:** “Family Daybook MCP 1.2 adds owner-only parenting rotation tools and schedule-aware contribution tracking across 13 OAuth-protected tools.”

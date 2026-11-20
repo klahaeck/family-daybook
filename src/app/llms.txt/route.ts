@@ -7,13 +7,16 @@ export function GET() {
   const url = (path: string) => new URL(path, siteUrl).toString();
   const body = `# Family Daybook
 
-> Private family recordkeeping for caregiving, appointments, factual notes, visible corrections, and organized reports.
+> Private family recordkeeping for caregiving, optional parenting rotations, appointments, factual notes, visible corrections, and organized reports.
 
 ## Product and agent access
 - ${url("/")} — Product overview
 - ${url("/agent-access")} — MCP connection, permissions, tools, and safeguards
 - ${url("/agent-capabilities.json")} — Machine-readable public capability manifest
-- ${url("/co-parenting-recordkeeping")} — Co-parenting recordkeeping overview
+- ${url("/co-parenting-recordkeeping")} — Co-parenting recordkeeping and optional 1-4-week parenting rotations; no other-parent account required
+
+## Parenting schedules
+Opt-in per-child whole-day rotations support alternating weeks and 2-2-3. On own days, either parent can provide care; off-day routines track only the owner's contributions and never lower completion. Scheduled responsibility is not evidence of actual care. MCP owners can use get_parenting_schedule and update_parenting_schedule with version-checked changes effective today or later.
 
 ## Feature evidence
 - ${url("/features/record-integrity")} — Record timestamps, finalization, corrections, and linked hashes

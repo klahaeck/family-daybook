@@ -10,7 +10,7 @@ Family Daybook ships one Expo/React Native codebase for iOS and Android. The exi
 - `src/app/api/v1`: versioned native API. Private responses use `Cache-Control: private, no-store` and stable `{ data }` / `{ error }` envelopes.
 - `src/lib/application` and `src/lib/repository`: shared authorization, validation, persistence, revisions, auditing, operation replay, and record invariants used by web, mobile API, and MCP.
 
-Mobile mutation attribution is transport-neutral: every request carries a UUID `Idempotency-Key`; version-sensitive changes also carry `If-Match`. The repository stores the source, client key, operation name, operation ID, input hash, and expected version atomically with the mutation. MCP 1.1 keeps its OAuth client attribution, eleven-tool catalog, `record_routine_item` form elicitation, signed five-minute continuation fallback, and routine-slot uniqueness while sharing the same operation layer.
+Mobile mutation attribution is transport-neutral: every request carries a UUID `Idempotency-Key`; version-sensitive changes also carry `If-Match`. The repository stores the source, client key, operation name, operation ID, input hash, and expected version atomically with the mutation. MCP 1.2 keeps its OAuth client attribution, 13-tool catalog (including owner-only parenting schedule reads and updates), `record_routine_item` form elicitation, signed five-minute continuation fallback, and routine-slot uniqueness while sharing the same operation layer.
 
 ## Authentication and billing
 

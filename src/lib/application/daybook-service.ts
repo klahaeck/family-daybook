@@ -1,4 +1,6 @@
 import "server-only";
+import { parentingScheduleSchema } from "@/lib/domain/parenting-schedules";
+import { parentingScheduleVersion } from "@/lib/repository/helpers";
 
 import { createHmac, randomBytes } from "node:crypto";
 
@@ -149,6 +151,24 @@ export class DaybookService {
     private readonly context: RequestContext,
   ) {}
 
+  async getParentingSchedule() {
+    requireOwner(this.context);
+    const settings = await this.repository.getSettings(this.context);
+    return {
+      schedules: settings.workspace.parentingSchedules ?? [],
+      scheduleVersion: parentingScheduleVersion(settings.workspace.parentingSchedules),
+      timezone: settings.workspace.timezone,
+      currentLocalDate: localDateInTimezone(new Date(), settings.workspace.timezone),
+      children: settings.children.filter((child) => child.active).map(({ id: childId, displayName }) => ({ childId, displayName })),
+    };
+  }
+
+  async updateParentingSchedule(input: { schedule: unknown; scheduleVersion: string }) {
+    requireOwner(this.context);
+    const schedule = parseOrThrow(parentingScheduleSchema, input.schedule);
+    return this.repository.updateParentingSchedule(this.context, schedule, input.scheduleVersion);
+  }
+
   async getContext() {
     const settings = await this.repository.getSettings(this.context);
     return {
@@ -163,7 +183,8 @@ export class DaybookService {
         .map(({ id: childId, displayName }) => ({ childId, displayName })),
       caregivers: settings.caregivers
         .filter((caregiver) => caregiver.active)
-        .map(({ id: caregiverId, displayName, relationship }) => ({
+        .map(({ id: caregiverId, displayName, relationship, isOwner }) => ({
+          isOwner,
           caregiverId,
           displayName,
           relationship,

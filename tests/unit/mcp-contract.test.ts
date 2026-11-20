@@ -35,6 +35,8 @@ async function mcpPayload(response: Response) {
 }
 
 function toolRequest(options: {
+  name?: string;
+  scopes?: string[];
   arguments: Record<string, unknown>;
   context: RequestContext;
   clientId?: string;
@@ -54,7 +56,7 @@ function toolRequest(options: {
         ? {
             "MCP-Protocol-Version": modernProtocolVersion,
             "Mcp-Method": "tools/call",
-            "Mcp-Name": "record_routine_item",
+            "Mcp-Name": options.name ?? "record_routine_item",
           }
         : { "MCP-Protocol-Version": "2025-06-18" }),
     },
@@ -63,7 +65,7 @@ function toolRequest(options: {
       id: crypto.randomUUID(),
       method: "tools/call",
       params: {
-        name: "record_routine_item",
+        name: options.name ?? "record_routine_item",
         arguments: options.arguments,
         ...(options.requestState ? { requestState: options.requestState } : {}),
         ...(options.inputResponses
@@ -89,7 +91,7 @@ function toolRequest(options: {
   request.auth = {
     token: "opaque-token",
     clientId,
-    scopes: Object.values(DAYBOOK_SCOPES),
+    scopes: options.scopes ?? Object.values(DAYBOOK_SCOPES),
     extra: {
       userId: identity.authUserId,
       daybookContext: options.context,
@@ -107,6 +109,8 @@ describe("Daybook MCP contract", () => {
     expect(TOOL_SCOPES).toEqual({
       get_daybook_context: DAYBOOK_SCOPES.read,
       get_day: DAYBOOK_SCOPES.read,
+      get_parenting_schedule: DAYBOOK_SCOPES.read,
+      update_parenting_schedule: DAYBOOK_SCOPES.write,
       get_care_entry: DAYBOOK_SCOPES.read,
       create_care_entry: DAYBOOK_SCOPES.write,
       record_routine_item: DAYBOOK_SCOPES.write,
@@ -117,6 +121,46 @@ describe("Daybook MCP contract", () => {
       preview_day_finalization: DAYBOOK_SCOPES.finalize,
       confirm_day_finalization: DAYBOOK_SCOPES.finalize,
     });
+  });
+
+  it("configures versioned parenting rotations and exposes optional off-day care through MCP", async () => {
+    const repository = new MemoryParentingRepository();
+    const context = await repository.resolveContext(identity);
+    const call = async (name: string, args: Record<string, unknown> = {}, options: { context?: RequestContext; scopes?: string[] } = {}) =>
+      mcpPayload(await daybookScopeGate(toolRequest({ name, context: options.context ?? context, arguments: args, scopes: options.scopes })));
+    const read = await call("get_parenting_schedule");
+    const initial = read.result.structuredContent.data;
+    expect(initial.schedules).toEqual([]);
+    expect(initial.scheduleVersion).toMatch(/^[a-f0-9]{64}$/);
+    const schedule = { enabled: true, effectiveFrom: initial.currentLocalDate, anchorDate: initial.currentLocalDate, children: initial.children.map((child: { childId: string }) => ({ childId: child.childId, days: Array(14).fill("other") })) };
+    const input = { schedule, scheduleVersion: initial.scheduleVersion, operationId: crypto.randomUUID() };
+    const written = await call("update_parenting_schedule", input);
+    expect(written.result.isError).not.toBe(true);
+    const saved = written.result.structuredContent.data;
+    expect(saved.schedules).toEqual([schedule]);
+    expect((await call("update_parenting_schedule", input)).result.structuredContent.data).toEqual(saved);
+    const stale = await call("update_parenting_schedule", { ...input, operationId: crypto.randomUUID() });
+    expect(stale.result.structuredContent.error.code).toBe("VERSION_CONFLICT");
+    const day = (await call("get_day", { localDate: initial.currentLocalDate })).result.structuredContent.data;
+    expect(day.tasks.every((task: { optional: boolean }) => task.optional)).toBe(true);
+    expect(day.completion.total).toBe(0);
+    expect(day.parentingAssignments.every((item: { mine: boolean }) => !item.mine)).toBe(true);
+    const settings = await repository.getSettings(context);
+    const other = settings.caregivers.find((caregiver) => !caregiver.isOwner)!;
+    const rejectedCare = await call("create_care_entry", { localDate: initial.currentLocalDate, source: { kind: "custom", label: "Extra pickup" }, childIds: [initial.children[0].childId], caregiverIds: [other.id], status: "completed", occurredAt: new Date().toISOString(), operationId: crypto.randomUUID() });
+    expect(rejectedCare.result.structuredContent.error.code).toBe("OFF_DAY_CONTRIBUTIONS_MUST_BE_YOURS");
+    const invalid = await call("update_parenting_schedule", { schedule: { ...schedule, children: [{ childId: "foreign-child", days: Array(7).fill("mine") }] }, scheduleVersion: saved.scheduleVersion, operationId: crypto.randomUUID() });
+    expect(invalid.result.structuredContent.error.code).toBe("VALIDATION_ERROR");
+    const backdated = await call("update_parenting_schedule", { schedule: { ...schedule, effectiveFrom: "2000-01-01" }, scheduleVersion: saved.scheduleVersion, operationId: crypto.randomUUID() });
+    expect(backdated.result.structuredContent.error.code).toBe("SCHEDULE_CANNOT_CHANGE_PAST_DAYS");
+    const reviewer = { ...context, member: { ...context.member, role: "reviewer" as const } };
+    expect((await call("get_parenting_schedule", {}, { context: reviewer })).result.structuredContent.error.code).toBe("FORBIDDEN");
+    expect((await call("update_parenting_schedule", { ...input, operationId: crypto.randomUUID() }, { context: reviewer })).result.structuredContent.error.code).toBe("FORBIDDEN");
+    const forbidden = await daybookScopeGate(toolRequest({ name: "update_parenting_schedule", context, arguments: input, scopes: [DAYBOOK_SCOPES.read] }));
+    expect(forbidden.status).toBe(403);
+    const disabled = await call("update_parenting_schedule", { schedule: { ...schedule, enabled: false }, scheduleVersion: saved.scheduleVersion, operationId: crypto.randomUUID() });
+    expect(disabled.result.structuredContent.data.schedules[0].enabled).toBe(false);
+    expect((await repository.getDashboard(context, initial.currentLocalDate)).completion.total).toBeGreaterThan(0);
   });
 
   it("does not expose local demo data when Clerk and Mongo are absent", async () => {
@@ -304,7 +348,7 @@ describe("Daybook MCP contract", () => {
     }
   });
 
-  it("advertises MCP server version 1.1.0", async () => {
+  it("advertises MCP server version 1.2.0", async () => {
     const repository = new MemoryParentingRepository();
     const context = await repository.resolveContext(identity);
     const request = new Request("https://daybook.example/mcp", {
@@ -334,7 +378,7 @@ describe("Daybook MCP contract", () => {
     const payload = await mcpPayload(await daybookScopeGate(request));
     expect(payload.result.serverInfo).toMatchObject({
       name: "family-daybook",
-      version: "1.1.0",
+      version: "1.2.0",
     });
   });
 

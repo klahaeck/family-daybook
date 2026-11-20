@@ -1,4 +1,5 @@
 import "server-only";
+import { parentingScheduleSchema } from "@/lib/domain/parenting-schedules";
 
 import { randomBytes } from "node:crypto";
 
@@ -163,6 +164,8 @@ function stableError(error: unknown) {
     "IDEMPOTENCY_CONFLICT",
     "ROUTINE_UNAVAILABLE",
     "WORKFLOW_EXPIRED",
+    "SCHEDULE_CANNOT_CHANGE_PAST_DAYS",
+    "OFF_DAY_CONTRIBUTIONS_MUST_BE_YOURS",
   ]);
   const code = supported.has(rawCode)
     ? rawCode
@@ -187,6 +190,8 @@ function stableError(error: unknown) {
       "Routine recording is unavailable for this date or special-day plan.",
     WORKFLOW_EXPIRED:
       "The routine-recording questions expired or do not belong to this authorization.",
+    SCHEDULE_CANNOT_CHANGE_PAST_DAYS: "Schedule changes must take effect today or later.",
+    OFF_DAY_CONTRIBUTIONS_MUST_BE_YOURS: "On off days, record only your own contributions.",
     INTERNAL_ERROR: "The operation could not be completed.",
   };
   return {
@@ -461,6 +466,22 @@ const rawHandler = createMcpHandler(
     );
 
     server.registerTool(
+      "get_parenting_schedule",
+      { ...registrationMetadata("get_parenting_schedule"), inputSchema: z.object({}), outputSchema },
+      async (input, ctx) => runTool(
+        async () => (await serviceFor(ctx, "get_parenting_schedule", input)).getParentingSchedule(),
+        () => "Returned parenting schedule versions and current scheduleVersion.",
+      ),
+    );
+    server.registerTool(
+      "update_parenting_schedule",
+      { ...registrationMetadata("update_parenting_schedule"), inputSchema: z.object({ schedule: parentingScheduleSchema, scheduleVersion: version, operationId: mutationId }), outputSchema },
+      async (input, ctx) => runTool(
+        async () => (await serviceFor(ctx, "update_parenting_schedule", input)).updateParentingSchedule(input),
+        () => "Updated the parenting schedule without changing recorded care or finalized assignments.",
+      ),
+    );
+    server.registerTool(
       "get_care_entry",
       {
         ...registrationMetadata("get_care_entry"),
@@ -627,9 +648,9 @@ const rawHandler = createMcpHandler(
     );
   },
   {
-    serverInfo: { name: "family-daybook", version: "1.1.0" },
+    serverInfo: { name: "family-daybook", version: "1.2.0" },
     instructions:
-      "Use get_daybook_context first. Prefer record_routine_item for named routine completions; answer its questions or retry with its continuation token. Never guess IDs. Fetch fresh versions before other mutations. Corrections and finalization require preview followed by confirmation.",
+      "Use get_daybook_context first. Prefer record_routine_item for named routine completions; answer its questions or retry with its continuation token. Never guess IDs or infer actual care from parenting schedules. Use get_parenting_schedule before update_parenting_schedule; schedule changes require a fresh scheduleVersion and explicit user intent. Use get_day to distinguish expected routines from optional off-day contributions, which only credit the owner. Either parent may help on own days. Fetch fresh versions before other mutations. Corrections and finalization require preview followed by confirmation.",
     maxSubscriptions: 0,
     inputRequired: { maxRounds: 4, roundTimeoutMs: 5 * 60 * 1000 },
     requestState: { verify: routineStateCodec.verify },

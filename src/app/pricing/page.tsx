@@ -61,7 +61,7 @@ export default async function PricingPage({
             </h1>
             <p className="mx-auto mt-6 max-w-2xl text-lg leading-8 text-muted-foreground">
               The workspace owner manages one paid plan. Invited reviewers are
-              covered by that workspace and never need to purchase separate access.
+              covered by that workspace and never need to purchase separate access. Optional parenting rotations work even if the other parent has no account.
             </p>
           </div>
         </header>

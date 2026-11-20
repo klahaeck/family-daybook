@@ -57,7 +57,7 @@ const recordTypes = [
     icon: HeartHandshake,
     title: "Caregiving routines and parenting time",
     description:
-      "Keep everyday care, time together, school routines, meals, and other practical details in one consistent co-parenting log.",
+      "Choose an optional 1-4-week parenting rotation per child, including alternating weeks and 2-2-3. Special-day plans override the rotation; the schedule never claims who actually provided care.",
   },
   {
     icon: CalendarDays,
@@ -138,6 +138,11 @@ const faqs = [
     question: "What can I record in Family Daybook?",
     answer:
       "You can record caregiving routines, appointments, important events, factual notes, attachments, and the relevant context that helps each entry remain understandable over time.",
+  },
+  {
+    question: "Can I use a parenting schedule without the other parent joining?",
+    answer:
+      "Yes. The other parent does not need an account. Set a repeating whole-day schedule for each child, then record either parent's help on your days. On off days, record only your own contributions. Unrecorded off-day routines are optional, never imply missed care, and do not lower completion. Schedule changes apply today or later, and finalized day assignments remain unchanged.",
   },
   {
     question: "Is Family Daybook a co-parent messaging app?",

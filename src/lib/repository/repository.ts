@@ -1,5 +1,6 @@
 import type {
   Appointment,
+  ParentingSchedule,
   Attachment,
   AuditEvent,
   CareEntry,
@@ -88,6 +89,7 @@ export interface ParentingRepository {
   getIncidentsData(context: RequestContext): Promise<IncidentsData>;
   getReports(context: RequestContext): Promise<ReportSnapshot[]>;
   getSettings(context: RequestContext): Promise<SettingsData>;
+  updateParentingSchedule(context: RequestContext, schedule: ParentingSchedule, scheduleVersion: string): Promise<{ schedules: ParentingSchedule[]; scheduleVersion: string }>;
   getSpecialArrangements(
     context: RequestContext,
   ): Promise<SpecialArrangementsData>;

@@ -57,7 +57,7 @@ const steps = [
 ];
 
 const features = [
-  { icon: ListChecks, title: "A steadier daily rhythm", description: "Turn recurring family routines into a simple checklist and add factual notes only when they are useful." },
+  { icon: ListChecks, title: "Routines for your parenting days", description: "Choose everyday care or an optional 1-4-week parenting rotation per child, including alternating weeks and 2-2-3. Track either parent's help on your days and only your contributions on off days, without lowering completion.", href: "/co-parenting-recordkeeping" },
   { icon: Clock3, title: "One clear timeline", description: "Bring caregiving, appointments, and important moments together in chronological order." },
   { icon: CalendarDays, title: "Appointments in context", description: "Keep schedules, responsibility, arrival details, and outcomes together instead of scattered across messages." },
   { icon: FileClock, title: "Factual incident notes", description: "Record what happened with observable details, exact words, witnesses, actions, and outcomes.", href: "/guides/factual-family-records" },
@@ -147,7 +147,7 @@ export default async function MarketingHome() {
             <div className="mx-auto max-w-2xl text-center">
               <p className="text-xs font-bold uppercase tracking-[0.18em] text-primary">Made for the whole day</p>
               <h2 className="mt-4 text-balance text-4xl font-semibold tracking-tight sm:text-5xl">Every important detail, in its proper place.</h2>
-              <p className="mt-5 text-lg leading-8 text-muted-foreground">Flexible enough for everyday care, structured enough to stay useful over time.</p>
+              <p className="mt-5 text-lg leading-8 text-muted-foreground">Flexible enough for everyday care or separated-parent schedules. The other parent does not need an account; planned responsibility stays separate from who actually provided care.</p>
             </div>
             <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {features.map((feature) => {

@@ -1,3 +1,4 @@
+import { parentingScheduleVersion } from "@/lib/repository/helpers";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { MemoryParentingRepository, resetMemoryRepository } from "@/lib/repository/memory-repository";
 import { localDateInTimezone, localDateTimeToUtc, shiftLocalDate } from "@/lib/domain/dates";
@@ -86,7 +87,12 @@ describe.skipIf(!process.env.TEST_MONGODB_URI)("Mongo parenting schedule parity"
     await repository.updateSettings(context, { ...input, caregivers: [...input.caregivers, { displayName: "Other parent", relationship: "Parent" }] });
     settings = await repository.getSettings(context);
     const schedule: ParentingSchedule = { effectiveFrom: today, anchorDate: today, enabled: true, children: settings.children.map((child) => ({ childId: child.id, days: Array(14).fill("other") })) };
-    await repository.updateSettings(context, { ...input, caregivers: settings.caregivers, parentingSchedule: schedule });
+    const initialVersion = parentingScheduleVersion(settings.workspace.parentingSchedules);
+    const saved = await repository.updateParentingSchedule(context, schedule, initialVersion);
+    expect(saved.schedules).toEqual([schedule]);
+    await expect(repository.updateParentingSchedule(context, { ...schedule, enabled: false }, initialVersion)).rejects.toThrow("VERSION_CONFLICT");
+    const refreshed = await repository.resolveContext({ authUserId: "schedule-owner", email: "schedule@example.test", displayName: "Schedule owner", mfaEnabled: true, demo: false });
+    expect((await repository.getSettings(refreshed)).workspace.parentingSchedules).toEqual([schedule]);
     const dashboard = await repository.getDashboard(context, today);
     expect(dashboard.tasks.every((task) => task.optional)).toBe(true);
     const owner = settings.caregivers.find((caregiver) => caregiver.isOwner)!;
@@ -97,7 +103,7 @@ describe.skipIf(!process.env.TEST_MONGODB_URI)("Mongo parenting schedule parity"
     await expect(repository.updateCareEntry(context, { ...care, recordId: entry.id })).rejects.toThrow("OFF_DAY_CONTRIBUTIONS_MUST_BE_YOURS");
     await repository.finalizeDailyLog(context, today);
     const version = await repository.getDayVersion(context, today);
-    await repository.updateSettings(context, { ...input, caregivers: settings.caregivers, parentingSchedule: { ...schedule, enabled: false } });
+    await repository.updateParentingSchedule(context, { ...schedule, enabled: false }, saved.scheduleVersion);
     expect((await repository.getDashboard(context, today)).tasks.every((task) => task.optional)).toBe(true);
     expect(await repository.getDayVersion(context, today)).toBe(version);
   });
