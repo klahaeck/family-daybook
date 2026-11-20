@@ -150,6 +150,9 @@ export const careEntryViewSchema = z.object({
 });
 
 export const todayTaskSchema = z.object({
+  optional: z.boolean().optional(),
+  offDayChildIds: z.array(z.string()).optional(),
+  allowedCaregiverIds: z.array(z.string()).optional(),
   id: z.string(),
   source: z.enum(["routine", "special_arrangement"]),
   templateItemId: z.string().optional(),
@@ -198,6 +201,7 @@ export const specialDayTaskSchema = specialDayTaskInputSchema.extend({
 });
 
 export const daySchema = z.object({
+  parentingAssignments: z.array(z.object({ childId: z.string(), mine: z.boolean() })).optional(),
   localDate: localDateSchema,
   status: z.enum(["open", "finalized"]),
   notes: z.string().optional(),
@@ -446,14 +450,23 @@ export const routineTemplateItemSchema = z.object({
   weekdays: z.array(z.number().int().min(0).max(6)),
   active: z.boolean(),
 });
+export const parentingScheduleSchema = z.object({
+  effectiveFrom: localDateSchema,
+  anchorDate: localDateSchema,
+  enabled: z.boolean(),
+  children: z.array(z.object({ childId: z.string().min(1), days: z.array(z.enum(["mine", "other"])).refine((days) => [7, 14, 21, 28].includes(days.length), "Choose a 1-4 week cycle") })).min(1),
+});
+export type ParentingSchedule = z.infer<typeof parentingScheduleSchema>;
+
 export const settingsSchema = z.object({
-  workspace: sessionSchema.shape.workspace.extend({ hardDeleteEnabled: z.boolean() }),
+  workspace: sessionSchema.shape.workspace.extend({ hardDeleteEnabled: z.boolean(), parentingSchedules: z.array(parentingScheduleSchema).optional() }),
   children: z.array(childSchema),
   caregivers: z.array(caregiverSchema),
   members: z.array(reviewerSchema),
   template: z.object({ id: z.string(), version: z.number(), effectiveFrom: localDateSchema, items: z.array(routineTemplateItemSchema) }),
 });
 export const settingsUpdateInputSchema = z.object({
+  parentingSchedule: parentingScheduleSchema.optional(),
   name: z.string().trim().min(2).max(120),
   timezone: z.string().min(1),
   hardDeleteEnabled: z.boolean(),

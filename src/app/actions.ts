@@ -78,6 +78,8 @@ function fail(error: unknown): ActionResult<never> {
       "One of the selected caregivers is no longer available.",
     INVALID_ARRANGEMENT_TASK:
       "One of the planned tasks is no longer available.",
+    SCHEDULE_CANNOT_CHANGE_PAST_DAYS: "Schedule changes must take effect today or later.",
+    OFF_DAY_CONTRIBUTIONS_MUST_BE_YOURS: "On off days, record only your own contributions.",
     INVALID_CARE_TASK: "Choose either a routine task or a special-arrangement task.",
     INVALID_CAREGIVER_ATTRIBUTION:
       "Completed and partial records require a care provider; missed and not applicable records cannot assign one.",

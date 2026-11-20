@@ -10,14 +10,15 @@ import { localDateTimeIso } from "@/utils";
 
 type Values = z.input<typeof customCareRecordInputSchema>;
 
-export function CustomCareForm({ date, timeZone, childOptions, caregivers, onSubmit, pending, initialInput }: {
+export function CustomCareForm({ date, timeZone, childOptions, caregivers, onSubmit, pending, initialInput, offDayChildIds = [] }: {
   date: string;
   timeZone: string;
   childOptions: Array<{ id: string; displayName: string }>;
-  caregivers: Array<{ id: string; displayName: string }>;
+  caregivers: Array<{ id: string; displayName: string; isOwner?: boolean }>;
   onSubmit: (input: Values) => void;
   pending: boolean;
   initialInput?: Values;
+  offDayChildIds?: string[];
 }) {
   const [localTime, setLocalTime] = useState(() => initialInput
     ? new Intl.DateTimeFormat("en-GB", { timeZone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(initialInput.occurredAt))
@@ -38,11 +39,12 @@ export function CustomCareForm({ date, timeZone, childOptions, caregivers, onSub
   const status = useWatch({ control: form.control, name: "status" });
   const selectedChildren = useWatch({ control: form.control, name: "childIds" });
   const selectedCaregivers = useWatch({ control: form.control, name: "caregiverIds" });
+  const availableCaregivers = selectedChildren.some((id) => offDayChildIds.includes(id)) ? caregivers.filter((item) => item.isOwner) : caregivers;
   const submit = form.handleSubmit((values) => {
     try {
       const occurredAt = localDateTimeIso(date, localTime, timeZone);
       setTimeError(undefined);
-      onSubmit({ ...values, occurredAt });
+      onSubmit({ ...values, caregiverIds: values.caregiverIds.filter((id) => availableCaregivers.some((item) => item.id === id)), occurredAt });
     } catch (error) {
       setTimeError(error instanceof Error ? error.message : "Enter a valid time.");
     }
@@ -56,7 +58,7 @@ export function CustomCareForm({ date, timeZone, childOptions, caregivers, onSub
       {form.formState.errors.childIds?.message ? <Body muted>{form.formState.errors.childIds.message}</Body> : null}
       {(["completed", "partial", "missed", "not_applicable"] as const).map((value) => <ChoiceRow key={value} label={value.replace("_", " ")} selected={status === value} onPress={() => { form.setValue("status", value); if (value === "missed" || value === "not_applicable") form.setValue("caregiverIds", []); }} />)}
       <Field label="Time (HH:mm)" value={localTime} onChangeText={(value) => { setLocalTime(value); setTimeError(undefined); }} error={timeError} />
-      {(status === "completed" || status === "partial") ? caregivers.map((caregiver) => <ChoiceRow key={caregiver.id} label={caregiver.displayName} selected={selectedCaregivers.includes(caregiver.id)} onPress={() => form.setValue("caregiverIds", selectedCaregivers.includes(caregiver.id) ? selectedCaregivers.filter((id) => id !== caregiver.id) : [...selectedCaregivers, caregiver.id], { shouldValidate: true })} />) : null}
+      {(status === "completed" || status === "partial") ? availableCaregivers.map((caregiver) => <ChoiceRow key={caregiver.id} label={caregiver.displayName} selected={selectedCaregivers.includes(caregiver.id)} onPress={() => form.setValue("caregiverIds", selectedCaregivers.includes(caregiver.id) ? selectedCaregivers.filter((id) => id !== caregiver.id) : [...selectedCaregivers, caregiver.id], { shouldValidate: true })} />) : null}
       {form.formState.errors.caregiverIds?.message ? <Body muted>{form.formState.errors.caregiverIds.message}</Body> : null}
       <Controller control={form.control} name="notes" render={({ field, fieldState }) => <Field label="Notes (optional)" value={field.value ?? ""} onChangeText={field.onChange} multiline error={fieldState.error?.message} />} />
       <ActionButton label={pending ? "Saving…" : "Save entry"} disabled={pending} onPress={submit} />

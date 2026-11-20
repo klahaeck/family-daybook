@@ -102,7 +102,7 @@ export default function TodayScreen() {
     routine.reset();
     setStatus("completed");
     setLocalTime(task.suggestedTime);
-    setCaregiverIds(task.plannedCaregiverIds);
+    setCaregiverIds(task.offDayChildIds?.length ? settings.data?.caregivers.filter((item) => item.isOwner).map((item) => item.id) ?? [] : task.plannedCaregiverIds);
     setActiveTaskId(taskId);
   };
   const childNames = (ids: string[]) => ids
@@ -179,8 +179,9 @@ export default function TodayScreen() {
           <Body muted>Tap an item to record it or view its details.</Body>
         </View>
 
-        <View style={styles.taskList}>
-          {day.data.tasks.map((task) => {
+        {day.data.tasks.some((task) => task.optional) ? <Body muted>Off-day contributions are optional and track only your care. They do not affect completion.</Body> : null}
+          <View style={styles.taskList}>
+          {[...day.data.tasks.filter((task) => !task.optional), ...day.data.tasks.filter((task) => task.optional)].map((task) => {
             const entry = day.data!.careEntries.find((item) => item.id === task.entryId);
             const recorded = Boolean(task.recorded && entry);
             const completed = entry?.status === "completed";
@@ -204,6 +205,7 @@ export default function TodayScreen() {
                 <View style={styles.taskCopy}>
                   <View style={styles.taskTitleRow}>
                     <Text numberOfLines={1} style={styles.taskTitle}>{task.label}</Text>
+                      {task.optional ? <Badge>Off-day</Badge> : null}
                     {entry ? <Badge danger={entry.status === "missed"}>{isRecordSaving(entry) ? "Saving…" : entry.status.replace("_", " ")}</Badge> : null}
                   </View>
                   <Text numberOfLines={1} style={styles.taskSubtitle}>{taskSubtitle}</Text>
@@ -243,7 +245,7 @@ export default function TodayScreen() {
           <Heading>Status</Heading>
           {(["completed", "partial", "missed", "not_applicable"] as const).map((value) => <ChoiceRow key={value} label={value.replace("_", " ")} selected={status === value} onPress={() => setStatus(value)} />)}
           {(status === "completed" || status === "partial") ? <Field label="Actual local time (HH:mm)" value={localTime} onChangeText={setLocalTime} /> : null}
-          {(status === "completed" || status === "partial") ? <><Heading>Caregivers</Heading>{settings.data?.caregivers.filter((item) => item.active).map((caregiver) => <ChoiceRow key={caregiver.id} label={caregiver.displayName} selected={caregiverIds.includes(caregiver.id)} onPress={() => setCaregiverIds((selected) => selected.includes(caregiver.id) ? selected.filter((id) => id !== caregiver.id) : [...selected, caregiver.id])} />)}</> : null}
+          {(status === "completed" || status === "partial") ? <><Heading>Caregivers</Heading>{settings.data?.caregivers.filter((item) => item.active && (!activeTask?.offDayChildIds?.length || item.isOwner)).map((caregiver) => <ChoiceRow key={caregiver.id} label={caregiver.displayName} selected={caregiverIds.includes(caregiver.id)} onPress={() => setCaregiverIds((selected) => selected.includes(caregiver.id) ? selected.filter((id) => id !== caregiver.id) : [...selected, caregiver.id])} />)}</> : null}
           {routine.error ? <Text accessibilityLiveRegion="polite" style={styles.errorText}>{friendlyError(routine.error)}</Text> : null}
           <ActionButton label={routine.isPending ? "Saving…" : "Save care record"} disabled={routine.isPending || ((status === "completed" || status === "partial") && caregiverIds.length === 0)} onPress={() => { if (activeTask && dayQuery.data) routine.mutate({ date, timeZone, task: activeTask, status, localTime, caregiverIds, version: dayQuery.data.dayVersion }); }} />
           <ActionButton label="Cancel" secondary onPress={() => setActiveTaskId(undefined)} />
@@ -251,7 +253,7 @@ export default function TodayScreen() {
       </FormSheet>
 
       <FormSheet title="Add care record" visible={customOpen && !custom.isPending} onClose={() => setCustomOpen(false)}>
-        {day.data && settings.data ? <CustomCareForm initialInput={custom.isError ? custom.variables?.input : undefined} key={date} date={date} timeZone={timeZone} childOptions={settings.data.children.filter((child) => child.active)} caregivers={settings.data.caregivers.filter((caregiver) => caregiver.active)} pending={custom.isPending} onSubmit={(input) => { if (dayQuery.data) custom.mutate({ input, version: dayQuery.data.dayVersion }); }} /> : <ScreenState loading={settings.isPending} error={settings.error} onRetry={() => void settings.refetch()} />}
+        {day.data && settings.data ? <CustomCareForm offDayChildIds={day.data.parentingAssignments?.filter((item) => !item.mine).map((item) => item.childId)} initialInput={custom.isError ? custom.variables?.input : undefined} key={date} date={date} timeZone={timeZone} childOptions={settings.data.children.filter((child) => child.active)} caregivers={settings.data.caregivers.filter((caregiver) => caregiver.active)} pending={custom.isPending} onSubmit={(input) => { if (dayQuery.data) custom.mutate({ input, version: dayQuery.data.dayVersion }); }} /> : <ScreenState loading={settings.isPending} error={settings.error} onRetry={() => void settings.refetch()} />}
         {custom.error ? <Text accessibilityLiveRegion="polite" style={styles.errorText}>{friendlyError(custom.error)}</Text> : null}
       </FormSheet>
     </Screen>

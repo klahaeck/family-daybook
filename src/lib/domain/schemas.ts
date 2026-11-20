@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { parentingScheduleSchema } from "./parenting-schedules";
 
 import { ATTACHMENT_CONTENT_TYPES } from "@/lib/domain/attachments";
 
@@ -181,6 +182,7 @@ export const inviteSchema = z.object({
 
 export const workspaceSettingsSchema = z
   .object({
+    parentingSchedule: parentingScheduleSchema.optional(),
     name: z.string().trim().min(2).max(120),
     timezone: z.string().trim().min(1).max(100),
     hardDeleteEnabled: z.boolean(),
@@ -227,6 +229,9 @@ export const workspaceSettingsSchema = z
         path: ["children"],
         message: "Each child must be unique",
       });
+    }
+    if (value.parentingSchedule?.children.some((child) => !childIds.has(child.childId))) {
+      context.addIssue({ code: "custom", path: ["parentingSchedule", "children"], message: "Schedule children must belong to this workspace" });
     }
     value.routineItems.forEach((item, index) => {
       if (item.active && item.childIds.length === 0) {

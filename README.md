@@ -7,6 +7,8 @@ It is a recordkeeping tool, not legal advice, an emergency service, or a guarant
 ## What is implemented
 
 - Per-child daily routine templates and a fast “Today” checklist
+- Opt-in 1-4-week parenting rotations per child, with alternating-week and 2-2-3 presets
+- Optional off-day contributions excluded from completion; record either parent's help on your days without another account
 - Date-range special arrangements with per-child responsibility and independent daily task snapshots
 - An isolated private workspace for every authenticated owner account
 - Previous-day navigation with historical templates, future-date prevention, and a two-calendar-day grace period before late-entry labeling
@@ -76,6 +78,14 @@ Vercel Workflows use the deployment’s managed workflow backend automatically. 
 - `production` requires `https://www.myfamilydaybook.com` and uses `com.myfamilydaybook.app`.
 
 Configure separate Clerk, MongoDB, Blob, billing webhook, and signing values for staging and production. Never point a preview or staging deployment at the production database. The EAS `preview` and `beta` profiles use the staging application environment; the `production` profile uses production.
+
+## Parenting schedules
+
+In Settings > Routine, enable a parenting schedule, choose its effective date and cycle start, then assign each whole day to you or the other parent. Cycles repeat every 1-4 weeks and can differ by child. Alternating-week and 2-2-3 presets are included. Existing special-day assignments override the rotation.
+
+On your days, record the actual caregiver (you, the other parent, or both). Off-day routines are optional and record only your contributions; leaving them unrecorded never means missed care or reduces completion. Mixed-child routine entries can select a subset of children; if an off-day child is included, only your care can be attributed.
+
+Changes take effect today or later. Earlier schedule versions remain available, and finalization snapshots each child's planned responsibility. Scheduling is optional and does not rewrite existing care records or report snapshots. Disable it from a chosen effective date to return to the ordinary routine checklist. Timed handovers and tracking the other parent's off-day care are not supported.
 
 ## Data integrity model
 

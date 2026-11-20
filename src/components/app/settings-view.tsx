@@ -36,6 +36,8 @@ import {
 } from "@/lib/domain/constants";
 import { ageOnDate, localDateInTimezone } from "@/lib/domain/dates";
 import { sortRoutineItemsByTime } from "@/lib/domain/routines";
+import { ParentingScheduleEditor } from "./parenting-schedule-editor";
+import type { ParentingSchedule } from "@/lib/domain/types";
 import type { SettingsData } from "@/lib/domain/types";
 
 type EditableCaregiver = {
@@ -125,11 +127,17 @@ export function SettingsView({ data, timezones }: { data: SettingsData; timezone
   const [reviewerDrafts, setReviewerDrafts] = useState<ReviewerDraft[]>([]);
   const [routineItems, setRoutineItems] = useState(() => editableRoutineItems(data.template.items));
   const [templateVersion, setTemplateVersion] = useState(data.template.version);
+  const [scheduleChanged, setScheduleChanged] = useState(false);
+  const [parentingSchedule, setParentingSchedule] = useState<ParentingSchedule | undefined>(() => {
+    const latest = data.workspace.parentingSchedules?.at(-1);
+    return latest ? { ...latest, effectiveFrom: latest.effectiveFrom < today ? today : latest.effectiveFrom } : undefined;
+  });
   const [message, setMessage] = useState<string>();
 
   const save = useMutation({
     mutationFn: async () => {
       const result = await updateSettingsAction({
+        parentingSchedule: scheduleChanged ? parentingSchedule : undefined,
         name: workspaceName,
         timezone,
         hardDeleteEnabled,
@@ -165,6 +173,7 @@ export function SettingsView({ data, timezones }: { data: SettingsData; timezone
       setRoutineItems(editableRoutineItems(settings.template.items));
       setTemplateVersion(settings.template.version);
       await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      setScheduleChanged(false);
       setMessage("Settings saved.");
     },
     onError: (cause) => setMessage(cause.message),
@@ -427,7 +436,8 @@ export function SettingsView({ data, timezones }: { data: SettingsData; timezone
         </div>
       </TabsContent>
 
-      <TabsContent value="routine">
+      <TabsContent value="routine" className="space-y-5">
+        <ParentingScheduleEditor value={parentingSchedule} onChange={(value) => { setParentingSchedule(value); setScheduleChanged(true); }} childOptions={children} today={today} />
         <Card>
           <CardHeader className="gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
             <div>
